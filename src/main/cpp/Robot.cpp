@@ -36,7 +36,7 @@ void Robot::Turret() {
 
 void Robot::RobotPeriodic() {
   // Back button (button 7) resets gyro heading
-  if (m_controller.GetBackButton()) {
+  if (m_controller.GetBackButtonPressed()) {
     m_pigeon.Reset();
   }
   GyroValue = -std::fmod(m_pigeon.GetYaw().GetValueAsDouble(), 360.0);
