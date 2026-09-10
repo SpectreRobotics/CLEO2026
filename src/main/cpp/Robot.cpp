@@ -24,6 +24,12 @@ Robot::Robot() {
 
   // Configure swerve drivetrain motors
   m_swerve.ConfigureMotors();
+
+  // Configure slide motor (Kraken X44) in brake mode and zero position
+  ctre::phoenix6::configs::MotorOutputConfigs slideConfig{};
+  slideConfig.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
+  m_slideMotor.GetConfigurator().Apply(slideConfig);
+  m_slideMotor.SetPosition(0_tr);
 }
 
 void Robot::Intake() {
@@ -41,6 +47,10 @@ void Robot::RobotPeriodic() {
   }
   GyroValue = -std::fmod(m_pigeon.GetYaw().GetValueAsDouble(), 360.0);
   frc::SmartDashboard::PutNumber("Gyro Heading", GyroValue);
+
+  double slidePos = m_slideMotor.GetPosition().GetValueAsDouble();
+  frc::SmartDashboard::PutNumber("Slide Position Rot", slidePos);
+  frc::SmartDashboard::PutBoolean("Intake Out", m_intakeOut);
 }
 
 void Robot::AutonomousInit() {
@@ -80,43 +90,48 @@ void Robot::TeleopPeriodic() {
 
   m_swerve.Update(x, y, x2, GyroValue, triggerL, triggerR, FieldCentric);
 
-  // ========== Mechanism Controls ==========
+  // ========== Slide & Intake Controls ==========
+  double slidePos = m_slideMotor.GetPosition().GetValueAsDouble();
   int pov = m_controller.GetPOV();
+
+  // D-pad Manual Backup Override
   if (pov == 0) {
-    m_slideMotor.Set(0.4);
-  } 
-  else if (pov == 180) {
-    m_slideMotor.Set(-0.4);
+    // D-pad UP: Manual slide forward
+    m_slideMotor.Set(kSlideSpeed);
+  } else if (pov == 180) {
+    // D-pad DOWN: Manual slide backward
+    m_slideMotor.Set(-kSlideSpeed);
   } else {
-    // Timed intake/slide sequencing
+    // Automatic Right Bumper Toggle
     if (m_controller.GetRightBumperButtonPressed()) {
       m_intakeOut = !m_intakeOut;
-      m_timer.Restart();
-      if (m_intakeOut) {
-        m_IntakeMotor.Set(0.8);
-      } else {
-        m_IntakeMotor.Set(0.0);
-      }
     }
 
-    units::second_t elapsedTime = m_timer.Get();
-
     if (m_intakeOut) {
-      if (elapsedTime < 2.0_s) {
-        m_slideMotor.Set(0.4);
+      // Slide forward 1 foot
+      if (slidePos < kSlideOneFootRotations) {
+        m_slideMotor.Set(kSlideSpeed);
       } else {
         m_slideMotor.Set(0.0);
-        m_IntakeMotor.Set(0.6);
+        m_IntakeMotor.Set(kIntakeSpeed); // Spin at 0.8 when out
       }
     } else {
-      if (elapsedTime < 2.0_s) {
-        m_slideMotor.Set(-0.4);
+      // Retract slide and turn off intake
+      m_IntakeMotor.Set(0.0);
+      if (slidePos > 0.1) {
+        m_slideMotor.Set(-kSlideSpeed);
       } else {
         m_slideMotor.Set(0.0);
       }
     }
   }
 
+  // Safety: If intake is all the way in, ensure intake motor is turned off
+  if (slidePos <= 0.2 && !m_intakeOut) {
+    m_IntakeMotor.Set(0.0);
+  }
+
+  // Indexer on button 8
   if (m_controller.GetRawButtonPressed(8)) {
     m_indexer.Set(0.8);
   } else {

@@ -41,11 +41,15 @@ class Robot : public frc::TimedRobot {
   const std::string kAutoNameCustom = "My Auto";
   std::string m_autoSelected;
 
-ctre::phoenix6::hardware::TalonFX m_slideMotor{1};
-ctre::phoenix6::hardware::TalonFX m_IntakeMotor{2};
-ctre::phoenix6::hardware::TalonFX m_indexer{3};
-ctre::phoenix6::hardware::TalonFX m_feeder{4};
+  // ========== Intake & Slide Mechanisms ==========
+  ctre::phoenix6::hardware::TalonFX m_slideMotor{1};   // Kraken X44 sliding intake motor
+  ctre::phoenix6::hardware::TalonFX m_IntakeMotor{2};  // Kraken X60 intake roller motor
+  ctre::phoenix6::hardware::TalonFX m_indexer{3};
+  ctre::phoenix6::hardware::TalonFX m_feeder{4};
 
+  static constexpr double kIntakeSpeed = 0.8;
+  static constexpr double kSlideSpeed = 0.4;
+  static constexpr double kSlideOneFootRotations = 15.0; // Adjust for 1 foot of travel based on mechanism gearing
 
   frc::XboxController m_controller{0};
   frc::Timer m_timer;
