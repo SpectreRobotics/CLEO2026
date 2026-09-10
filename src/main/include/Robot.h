@@ -17,6 +17,8 @@
 
 #include "Drivetrain.h"
 #include "DrivetrainConstants.h"
+#include "Turret.h"
+#include "TurretConstants.h"
 
 class Robot : public frc::TimedRobot {
  public:
@@ -33,7 +35,6 @@ class Robot : public frc::TimedRobot {
   void SimulationInit() override;
   void SimulationPeriodic() override;
   void Intake();
-  void Turret();
 
  private:
   frc::SendableChooser<std::string> m_chooser;
@@ -70,4 +71,7 @@ class Robot : public frc::TimedRobot {
   bool FieldCentric = true;
 
   frc::SendableChooser<std::string> m_driveModeChooser;
+
+  // ========== Turret Subsystem ==========
+  Turret m_turret;
 };

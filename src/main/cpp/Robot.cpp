@@ -30,14 +30,13 @@ Robot::Robot() {
   slideConfig.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
   m_slideMotor.GetConfigurator().Apply(slideConfig);
   m_slideMotor.SetPosition(0_tr);
+
+  // Configure modular turret subsystem (Kraken X44 rotation, 2x Kraken X60 shooter, 2x REV servos)
+  m_turret.ConfigureMotors();
 }
 
 void Robot::Intake() {
 
-}
-
-void Robot::Turret() {
-  
 }
 
 void Robot::RobotPeriodic() {
@@ -51,6 +50,9 @@ void Robot::RobotPeriodic() {
   double slidePos = m_slideMotor.GetPosition().GetValueAsDouble();
   frc::SmartDashboard::PutNumber("Slide Position Rot", slidePos);
   frc::SmartDashboard::PutBoolean("Intake Out", m_intakeOut);
+
+  // Periodic turret telemetry
+  m_turret.Periodic();
 }
 
 void Robot::AutonomousInit() {
