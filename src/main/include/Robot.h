@@ -14,6 +14,10 @@
 #include <ctre/phoenix6/TalonFX.hpp>
 #include <ctre/phoenix6/Orchestra.hpp>
 #include <ctre/phoenix6/CANcoder.hpp>
+
+#include "Drivetrain.h"
+#include "DrivetrainConstants.h"
+
 class Robot : public frc::TimedRobot {
  public:
   Robot();
@@ -47,4 +51,19 @@ ctre::phoenix6::hardware::TalonFX m_feeder{4};
   frc::Timer m_timer;
 
   bool m_intakeOut = false;
+
+  // ========== Swerve Drivetrain ==========
+  Drivetrain m_swerve;
+  ctre::phoenix6::hardware::Pigeon2 m_pigeon{2};
+
+  // Drive Control Variables
+  double GyroValue = 0.0;
+  double x = 0.0;
+  double y = 0.0;
+  double x2 = 0.0;
+  float triggerL = 0.0f;
+  float triggerR = 0.0f;
+  bool FieldCentric = true;
+
+  frc::SendableChooser<std::string> m_driveModeChooser;
 };

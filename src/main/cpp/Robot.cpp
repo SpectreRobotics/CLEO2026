@@ -9,10 +9,21 @@
 #include <units/time.h>
 #include <wpi/print.h>
 
+#define _USE_MATH_DEFINES
+#include <cmath>
+
 Robot::Robot() {
   m_chooser.SetDefaultOption(kAutoNameDefault, kAutoNameDefault);
   m_chooser.AddOption(kAutoNameCustom, kAutoNameCustom);
   frc::SmartDashboard::PutData("Auto Modes", &m_chooser);
+
+  // Drive mode chooser
+  m_driveModeChooser.SetDefaultOption("FieldCentric", "FieldCentric");
+  m_driveModeChooser.AddOption("RobotCentric", "RobotCentric");
+  frc::SmartDashboard::PutData("Drive Mode", &m_driveModeChooser);
+
+  // Configure swerve drivetrain motors
+  m_swerve.ConfigureMotors();
 }
 
 void Robot::Intake() {
@@ -23,9 +34,13 @@ void Robot::Turret() {
   
 }
 
-
 void Robot::RobotPeriodic() {
-
+  // Back button (button 7) resets gyro heading
+  if (m_controller.GetBackButton()) {
+    m_pigeon.Reset();
+  }
+  GyroValue = -std::fmod(m_pigeon.GetYaw().GetValueAsDouble(), 360.0);
+  frc::SmartDashboard::PutNumber("Gyro Heading", GyroValue);
 }
 
 void Robot::AutonomousInit() {
@@ -48,40 +63,57 @@ void Robot::TeleopInit() {
 void Robot::TeleopPeriodic() {
   using namespace units::literals;
 
+  // ========== Swerve Driving ==========
+  float rawx = m_controller.GetLeftX();
+  float rawy = m_controller.GetLeftY();
+  float rawx2 = m_controller.GetRightX();
+
+  triggerL = m_controller.GetLeftTriggerAxis();
+  triggerR = m_controller.GetRightTriggerAxis();
+
+  // Apply deadzones (forward on Xbox stick is negative Y, so invert rawy)
+  x = (std::abs(rawx) >= DrivetrainConstants::xdeadz) ? rawx : 0.0;
+  y = (std::abs(rawy) >= DrivetrainConstants::ydeadz) ? -rawy : 0.0;
+  x2 = (std::abs(rawx2) >= DrivetrainConstants::x2deadz) ? rawx2 : 0.0;
+
+  FieldCentric = (m_driveModeChooser.GetSelected() == "FieldCentric");
+
+  m_swerve.Update(x, y, x2, GyroValue, triggerL, triggerR, FieldCentric);
+
+  // ========== Mechanism Controls ==========
   int pov = m_controller.GetPOV();
   if (pov == 0) {
     m_slideMotor.Set(0.4);
-    return; 
   } 
   else if (pov == 180) {
     m_slideMotor.Set(-0.4);
-    return;
-  }
-
-  if (m_controller.GetRightBumperButtonPressed()) {
-    m_intakeOut = !m_intakeOut;
-    m_timer.Restart();
-    if (m_intakeOut) {
-      m_IntakeMotor.Set(0.8);
-    } else {
-      m_IntakeMotor.Set(0.0);
-    }
-  }
-
-  units::second_t elapsedTime = m_timer.Get();
-
-  if (m_intakeOut) {
-    if (elapsedTime < 2.0_s) {
-      m_slideMotor.Set(0.4);
-    } else {
-      m_slideMotor.Set(0.0);
-      m_IntakeMotor.Set(0.6);
-    }
   } else {
-    if (elapsedTime < 2.0_s) {
-      m_slideMotor.Set(-0.4);
+    // Timed intake/slide sequencing
+    if (m_controller.GetRightBumperButtonPressed()) {
+      m_intakeOut = !m_intakeOut;
+      m_timer.Restart();
+      if (m_intakeOut) {
+        m_IntakeMotor.Set(0.8);
+      } else {
+        m_IntakeMotor.Set(0.0);
+      }
+    }
+
+    units::second_t elapsedTime = m_timer.Get();
+
+    if (m_intakeOut) {
+      if (elapsedTime < 2.0_s) {
+        m_slideMotor.Set(0.4);
+      } else {
+        m_slideMotor.Set(0.0);
+        m_IntakeMotor.Set(0.6);
+      }
     } else {
-      m_slideMotor.Set(0.0);
+      if (elapsedTime < 2.0_s) {
+        m_slideMotor.Set(-0.4);
+      } else {
+        m_slideMotor.Set(0.0);
+      }
     }
   }
 
