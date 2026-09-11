@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <array>
+#include <string_view>
 #include <units/angle.h>
 #include <units/angular_velocity.h>
 #include <units/time.h>
@@ -64,4 +66,43 @@ namespace TurretConstants {
   constexpr double kShooterDefaultRPM = 2500.0;
   constexpr double kShooterIdleRPM = 0.0;
   constexpr double kManualRotationSpeed = 0.2;            ///< Manual jog duty cycle (0.0 - 1.0)
+
+  // ========== PhotonVision Camera Configuration ==========
+  constexpr std::string_view kCameraName = "turret_camera"; ///< Camera name in PhotonVision UI
+  constexpr double kVisionYawSign = 1.0;                   ///< 1.0 if CCW positive, -1.0 if inverted
+  constexpr double kCameraMountYawOffsetDeg = 0.0;         ///< Optical bore alignment offset (deg)
+  constexpr double kCameraMountPitchDeg = 25.0;            ///< Camera pitch angle above horizontal (deg)
+  constexpr double kCameraMountHeightMeters = 0.55;        ///< Lens center height above floor (m)
+  constexpr double kHubTargetHeightMeters = 2.10;          ///< Target AprilTag center height above floor (m)
+  constexpr double kHubRadiusMeters = 0.60;                ///< Target Hub opening radius (m)
+
+  // ========== Dynamic Turret Tolerance (OnyxTronix #2231 Model) ==========
+  constexpr double kMinToleranceDeg = 1.2;                 ///< Tightest tolerance at long range (deg)
+  constexpr double kMaxToleranceDeg = 5.5;                 ///< Widest tolerance at close range (deg)
+  constexpr double kToleranceMarginRatio = 0.45;           ///< Margin scaling factor of apparent angular radius
+
+  // ========== Field Target Coordinates (Fallback / Search via Odometry) ==========
+  constexpr double kRedHubX = 11.91;                       ///< Red Hub X on field (meters)
+  constexpr double kRedHubY = 4.05;                        ///< Red Hub Y on field (meters)
+  constexpr double kBlueHubX = 4.63;                       ///< Blue Hub X on field (meters)
+  constexpr double kBlueHubY = 4.05;                       ///< Blue Hub Y on field (meters)
+  constexpr double kTurretOffsetX = 0.0;                   ///< Turret pivot X offset from robot center (m)
+  constexpr double kTurretOffsetY = 0.0;                   ///< Turret pivot Y offset from robot center (m)
+
+  // ========== Ballistic Calibration Table (Distance -> Hood Angle & Shooter RPM) ==========
+  struct BallisticPoint {
+    double distanceMeters;
+    double hoodAngleDeg;
+    double shooterRPM;
+  };
+
+  constexpr std::array<BallisticPoint, 6> kBallisticTable{{
+      {1.5, 20.0, 2200.0},
+      {2.5, 28.0, 2600.0},
+      {3.5, 36.0, 3050.0},
+      {4.5, 45.0, 3550.0},
+      {5.5, 54.0, 4100.0},
+      {6.5, 62.0, 4700.0}
+  }};
 }
+

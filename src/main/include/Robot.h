@@ -74,4 +74,5 @@ class Robot : public frc::TimedRobot {
 
   // ========== Turret Subsystem ==========
   Turret m_turret;
+  bool m_autoTargetActive = false;
 };

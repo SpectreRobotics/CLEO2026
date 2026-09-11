@@ -139,6 +139,37 @@ void Robot::TeleopPeriodic() {
   } else {
     m_indexer.Set(0.0);
   }
+
+  // ========== Turret Auto-Targeting & Operator Controls ==========
+  // Hold Left Bumper to auto-target Hub using PhotonVision camera
+  m_autoTargetActive = m_controller.GetLeftBumperButton();
+
+  if (m_autoTargetActive) {
+    m_turret.SetTargetingMode(Turret::TargetingMode::kAuto);
+    m_turret.UpdateAutoTarget(
+        m_swerve.positionFWDField,
+        m_swerve.positionSTRField,
+        units::angle::degree_t(GyroValue));
+  } else {
+    // Manual Jog fallback when not auto-targeting:
+    if (pov == 90) {
+      // D-Pad Right: Jog CW
+      m_turret.SetRotationSpeed(TurretConstants::kManualRotationSpeed);
+    } else if (pov == 270) {
+      // D-Pad Left: Jog CCW
+      m_turret.SetRotationSpeed(-TurretConstants::kManualRotationSpeed);
+    } else {
+      m_turret.SetRotationSpeed(0.0);
+    }
+
+    // Stop flywheel when X button is pressed
+    if (m_controller.GetXButtonPressed()) {
+      m_turret.StopShooter();
+    }
+  }
+
+  frc::SmartDashboard::PutBoolean("AutoTarget/Active", m_autoTargetActive);
+  frc::SmartDashboard::PutBoolean("AutoTarget/Locked", m_turret.IsTargetLocked());
 }
 
 void Robot::DisabledInit() {}

@@ -11,9 +11,14 @@
 
 #include <rev/ServoHub.h>
 
+#include <vector>
 #include <units/angle.h>
 #include <units/angular_velocity.h>
+#include <units/length.h>
 #include <units/time.h>
+
+#include <photon/PhotonCamera.h>
+#include <photon/targeting/PhotonPipelineResult.h>
 
 #include "TurretConstants.h"
 
@@ -24,9 +29,16 @@
  * - Azimuth rotation: Kraken X44 with Motion Magic position control
  * - Flywheel shooter: 2x Kraken X60 with closed-loop velocity control
  * - Hood pitch: 2x REV Smart Servos via REV ServoHub (opposing channels)
+ * - Auto-targeting: PhotonVision camera mounted on turret with odometry fallback
  */
 class Turret {
  public:
+  enum class TargetingMode {
+    kManual,       ///< Manual jog or open-loop positioning
+    kVisionOnly,   ///< Track only when PhotonVision detects target
+    kOdometryOnly, ///< Track using robot field coordinates and known Hub pose
+    kAuto          ///< Vision tracking when available, odometry fallback when searching
+  };
   Turret();
 
   /**
@@ -100,6 +112,74 @@ class Turret {
    */
   void SetHoodPulseWidth(double pulseWidthUs);
 
+  // ========== Auto-Targeting & Vision Tracking ==========
+  /**
+   * @brief Main auto-targeting update loop. Uses PhotonVision camera mounted on turret
+   *        with odometry assistance / search fallback.
+   * @param robotX Robot field X position (meters).
+   * @param robotY Robot field Y position (meters).
+   * @param robotHeading Robot field heading (degrees).
+   */
+  void UpdateAutoTarget(units::length::meter_t robotX = units::length::meter_t(0),
+                        units::length::meter_t robotY = units::length::meter_t(0),
+                        units::angle::degree_t robotHeading = units::angle::degree_t(0));
+
+  /**
+   * @brief Returns true if PhotonVision currently sees a target.
+   */
+  bool HasVisionTarget() const { return m_hasVisionTarget; }
+
+  /**
+   * @brief Gets horizontal yaw offset to target in degrees.
+   */
+  double GetVisionYaw() const { return m_visionYawDeg; }
+
+  /**
+   * @brief Gets vertical pitch offset to target in degrees.
+   */
+  double GetVisionPitch() const { return m_visionPitchDeg; }
+
+  /**
+   * @brief Gets estimated distance to target Hub in meters.
+   */
+  double GetTargetDistanceMeters() const { return m_targetDistanceMeters; }
+
+  /**
+   * @brief Computes dynamic angular error tolerance in degrees based on distance to Hub.
+   *        Implements OnyxTronix #2231 apparent angular radius model.
+   */
+  double GetDynamicToleranceDegrees() const { return m_dynamicToleranceDeg; }
+
+  /**
+   * @brief Returns true if turret azimuth is within the dynamic tolerance of the target.
+   */
+  bool IsTargetLocked() const { return m_targetLocked; }
+
+  /**
+   * @brief Sets targeting mode (Manual, VisionOnly, OdometryOnly, Auto).
+   */
+  void SetTargetingMode(TargetingMode mode) { m_targetingMode = mode; }
+
+  /**
+   * @brief Gets current targeting mode.
+   */
+  TargetingMode GetTargetingMode() const { return m_targetingMode; }
+
+  /**
+   * @brief Interpolates target flywheel RPM from calibrated ballistic table based on distance.
+   */
+  double CalculateTargetRPM(double distanceMeters) const;
+
+  /**
+   * @brief Interpolates target hood pitch angle from calibrated ballistic table based on distance.
+   */
+  double CalculateTargetHoodAngle(double distanceMeters) const;
+
+  /**
+   * @brief Sets shooter RPM and hood pitch angle according to distance to target.
+   */
+  void SetShooterAndHoodForDistance(double distanceMeters);
+
   // ========== Periodic Telemetry ==========
   /**
    * @brief Telemetry update to be called from RobotPeriodic.
@@ -119,6 +199,9 @@ class Turret {
   rev::servohub::ServoChannel m_hoodServo1 =
       m_servoHub.GetServoChannel(rev::servohub::ServoChannel::ChannelId::kChannelId1);
 
+  // PhotonVision Camera on Turret
+  photon::PhotonCamera m_camera{TurretConstants::kCameraName};
+
   // Control Requests
   ctre::phoenix6::controls::MotionMagicVoltage m_motionMagicRequest{0_tr};
   ctre::phoenix6::controls::VelocityVoltage m_velocityRequest{0_tps};
@@ -128,4 +211,15 @@ class Turret {
   double m_targetAngleDeg = 0.0;
   double m_targetShooterRPM = 0.0;
   double m_currentHoodAngleDeg = 15.0;
+
+  // Auto-Targeting & Vision State
+  TargetingMode m_targetingMode = TargetingMode::kAuto;
+  bool m_hasVisionTarget = false;
+  bool m_targetLocked = false;
+  double m_visionYawDeg = 0.0;
+  double m_visionPitchDeg = 0.0;
+  double m_targetDistanceMeters = 0.0;
+  double m_dynamicToleranceDeg = TurretConstants::kMaxToleranceDeg;
+  int m_targetFiducialId = -1;
 };
+
