@@ -11,8 +11,8 @@
 /**
  * @brief Swerve drivetrain configuration constants
  *
- * Physical dimensions, gear ratios, PID tuning, and motion limits
- * for the 4-module swerve drive system.
+ * Physical dimensions, gear ratios, PID tuning, motion limits,
+ * and dual Limelight vision settings for the 4-module swerve drive system.
  */
 class DrivetrainConstants {
   public:
@@ -72,4 +72,13 @@ class DrivetrainConstants {
     static constexpr double outputClamp = 0.7;              ///< Max drive output (m/s or %)
     static constexpr double correctionClamp = 0.3;          ///< Max correction output
     static constexpr double rotationClamp = 0.3;            ///< Max rotation output
+
+    // ========== Dual Limelight Vision Localization ==========
+    static constexpr const char* kLimelightLeft = "limelight-left";    ///< NetworkTable name for left-side Limelight
+    static constexpr const char* kLimelightRight = "limelight-right";  ///< NetworkTable name for right-side Limelight
+    static constexpr double kMaxValidTagDistMeters = 4.5;              ///< Max distance to trust AprilTag pose (m)
+    static constexpr double kFieldLengthMeters = 17.55;                ///< FRC field length X max (meters)
+    static constexpr double kFieldWidthMeters = 8.21;                  ///< FRC field width Y max (meters)
+    static constexpr double kVisionSingleTagAlpha = 0.08;              ///< Complementary filter weight for 1 tag (8%)
+    static constexpr double kVisionMultiTagAlpha = 0.20;               ///< Complementary filter weight for >=2 tags (20%)
 };

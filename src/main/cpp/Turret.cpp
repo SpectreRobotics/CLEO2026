@@ -52,6 +52,10 @@ void Turret::ConfigureMotors() {
   shooterSlot0.kV = TurretConstants::kShooterV;
 
   m_flywheelLeft.GetConfigurator().Apply(shooterConfig);
+
+  // Right flywheel spins opposite direction (counter-rotating pair)
+  shooterConfig.MotorOutput.Inverted =
+      ctre::phoenix6::signals::InvertedValue::Clockwise_Positive;
   m_flywheelRight.GetConfigurator().Apply(shooterConfig);
 
   // ========== 3. Hood Pitch Servos (REV Smart Servos via ServoHub) ==========
@@ -268,16 +272,13 @@ void Turret::UpdateAutoTarget(units::length::meter_t robotX,
 
     SetRotationAngle(units::angle::degree_t(targetTurretDeg));
 
-    // Dynamic ballistics adjustment
-    SetShooterAndHoodForDistance(m_targetDistanceMeters);
-
+    // NOTE: Flywheel RPM and hood angle are handled by Shoot(), not here.
   } else if ((!m_hasVisionTarget && m_targetingMode == TargetingMode::kAuto) ||
              m_targetingMode == TargetingMode::kOdometryOnly) {
     // Fallback / Pre-alignment using robot field odometry and known Hub pose
     double hubX = TurretConstants::kBlueHubX;
     double hubY = TurretConstants::kBlueHubY;
-    auto alliance = frc::DriverStation::GetAlliance();
-    if (alliance && alliance.value() == frc::DriverStation::Alliance::kRed) {
+    if (m_isRedAlliance) {
       hubX = TurretConstants::kRedHubX;
       hubY = TurretConstants::kRedHubY;
     }
@@ -317,9 +318,7 @@ void Turret::UpdateAutoTarget(units::length::meter_t robotX,
     double angleError = std::abs(std::remainder(GetRotationAngleDegrees() - robotRelativeAngleDeg, 360.0));
     m_targetLocked = (angleError <= m_dynamicToleranceDeg);
 
-    if (dist > 0.5) {
-      SetShooterAndHoodForDistance(dist);
-    }
+    // NOTE: Flywheel RPM and hood angle are handled by Shoot(), not here.
   } else {
     m_targetLocked = false;
   }
@@ -351,4 +350,25 @@ void Turret::Periodic() {
     case TargetingMode::kAuto: modeStr = "Auto"; break;
   }
   frc::SmartDashboard::PutString("Turret/TargetingMode", modeStr);
+}
+
+// ========== Alliance Color ==========
+
+void Turret::SetAllianceRed(bool isRed) {
+  m_isRedAlliance = isRed;
+}
+
+// ========== Shoot Control (Left Trigger) ==========
+
+void Turret::Shoot(double triggerValue) {
+  // Hold left trigger to shoot: spin up flywheels + raise hood
+  // Release trigger: stop flywheels + lower hood all the way down
+  if (triggerValue > 0.15) {
+    // Spin up shooter and raise hood based on distance to target
+    SetShooterAndHoodForDistance(m_targetDistanceMeters);
+  } else {
+    // Stop shooter and lower hood to minimum (rest position)
+    StopShooter();
+    SetHoodAngle(units::angle::degree_t(TurretConstants::kHoodMinAngleDeg));
+  }
 }

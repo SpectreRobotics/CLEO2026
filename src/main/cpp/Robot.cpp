@@ -33,6 +33,27 @@ Robot::Robot() {
 
   // Configure modular turret subsystem (Kraken X44 rotation, 2x Kraken X60 shooter, 2x REV servos)
   m_turret.ConfigureMotors();
+
+  // Team color chooser - select your alliance for Hub targeting
+  m_teamColorChooser.SetDefaultOption("Blue", "Blue");
+  m_teamColorChooser.AddOption("Red", "Red");
+  frc::SmartDashboard::PutData("Team Color", &m_teamColorChooser);
+
+  // Pump mode toggle - when ON, intake oscillates forward/back during shooting
+  frc::SmartDashboard::PutBoolean("Intake/PumpMode", false);
+
+  // ========== AdvantageScope Data Logging & Telemetry ==========
+  // Start on-robot .wpilog recording to USB / /home/lvuser/logs/
+  frc::DataLogManager::Start();
+  frc::DriverStation::StartDataLog(frc::DataLogManager::GetLog());
+
+  // AdvantageScope & Dashboard 2D Field
+  frc::SmartDashboard::PutData("Field", &m_field);
+
+  // AdvantageScope NT4 struct publishers (Odometry and Swerve tabs)
+  auto inst = nt::NetworkTableInstance::GetDefault();
+  m_posePub = inst.GetTable("SmartDashboard")->GetStructTopic<frc::Pose2d>("RobotPose").Publish();
+  m_moduleStatesPub = inst.GetTable("SmartDashboard")->GetStructArrayTopic<frc::SwerveModuleState>("SwerveStates").Publish();
 }
 
 void Robot::Intake() {
@@ -53,6 +74,27 @@ void Robot::RobotPeriodic() {
 
   // Periodic turret telemetry
   m_turret.Periodic();
+
+  // Update dual Limelight vision-fused odometry (runs at all times)
+  m_swerve.UpdateVision(GyroValue);
+
+  // Display fused odometry on SmartDashboard
+  frc::Pose2d fusedPose = m_swerve.GetFieldPose();
+  frc::SmartDashboard::PutNumber("Odometry/FusedX", m_swerve.positionFWDField.value());
+  frc::SmartDashboard::PutNumber("Odometry/FusedY", m_swerve.positionSTRField.value());
+
+  // AdvantageScope 2D Field & NT4 struct telemetry
+  m_field.SetRobotPose(fusedPose);
+  m_posePub.Set(fusedPose);
+  m_moduleStatesPub.Set(m_swerve.GetModuleStates());
+
+  // Show Hub Target and Turret Direction on AdvantageScope 2D Field
+  double targetX = (m_teamColorChooser.GetSelected() == "Red") ? TurretConstants::kRedHubX : TurretConstants::kBlueHubX;
+  double targetY = (m_teamColorChooser.GetSelected() == "Red") ? TurretConstants::kRedHubY : TurretConstants::kBlueHubY;
+  m_field.GetObject("HubTarget")->SetPose(frc::Pose2d(units::length::meter_t(targetX), units::length::meter_t(targetY), frc::Rotation2d{}));
+
+  frc::Pose2d turretPose{fusedPose.Translation(), fusedPose.Rotation() + frc::Rotation2d(units::angle::degree_t(m_turret.GetRotationAngleDegrees()))};
+  m_field.GetObject("Turret")->SetPose(turretPose);
 }
 
 void Robot::AutonomousInit() {
@@ -95,81 +137,78 @@ void Robot::TeleopPeriodic() {
   // ========== Slide & Intake Controls ==========
   double slidePos = m_slideMotor.GetPosition().GetValueAsDouble();
   int pov = m_controller.GetPOV();
+  bool isShooting = triggerL > 0.15;
 
-  // D-pad Manual Backup Override
+  // Right bumper toggles intake in/out
+  if (m_controller.GetRightBumperButtonPressed()) {
+    m_intakeOut = !m_intakeOut;
+  }
+
+  // D-pad UP/DOWN: Manual slide override (safety backup)
   if (pov == 0) {
-    // D-pad UP: Manual slide forward
     m_slideMotor.Set(kSlideSpeed);
   } else if (pov == 180) {
-    // D-pad DOWN: Manual slide backward
     m_slideMotor.Set(-kSlideSpeed);
+  } else if (m_intakeOut) {
+    // ---- INTAKE OUT ----
+    // Slide runs forward until it hits the physical hardstop
+    m_slideMotor.Set(kSlideSpeed);
+    // Intake roller spins when the slide is out
+    m_IntakeMotor.Set(kIntakeSpeed);
   } else {
-    // Automatic Right Bumper Toggle
-    if (m_controller.GetRightBumperButtonPressed()) {
-      m_intakeOut = !m_intakeOut;
-    }
-
-    if (m_intakeOut) {
-      // Slide forward 1 foot
-      if (slidePos < kSlideOneFootRotations) {
-        m_slideMotor.Set(kSlideSpeed);
-      } else {
-        m_slideMotor.Set(0.0);
-        m_IntakeMotor.Set(kIntakeSpeed); // Spin at 0.8 when out
-      }
-    } else {
-      // Retract slide and turn off intake
-      m_IntakeMotor.Set(0.0);
-      if (slidePos > 0.1) {
-        m_slideMotor.Set(-kSlideSpeed);
-      } else {
-        m_slideMotor.Set(0.0);
-      }
-    }
-  }
-
-  // Safety: If intake is all the way in, ensure intake motor is turned off
-  if (slidePos <= 0.2 && !m_intakeOut) {
+    // ---- INTAKE IN ----
+    // Intake roller stops INSTANTLY when retracting
     m_IntakeMotor.Set(0.0);
+    // Retract slide until it reaches home position
+    if (slidePos > 0.1) {
+      m_slideMotor.Set(-kSlideSpeed);
+    } else {
+      m_slideMotor.Set(0.0);
+    }
   }
 
-  // Indexer on button 8
-  if (m_controller.GetRawButtonPressed(8)) {
+  // Pump Mode: optional SmartDashboard toggle
+  // When shooting AND pump is enabled, intake roller oscillates forward/back
+  // to help feed game pieces into the indexer
+  bool pumpEnabled = frc::SmartDashboard::GetBoolean("Intake/PumpMode", false);
+  if (isShooting && pumpEnabled) {
+    // 0.8 second oscillation period: 0.4s forward, 0.4s backward
+    double pumpTime = std::fmod(frc::Timer::GetFPGATimestamp().value(), 0.8);
+    if (pumpTime < 0.4) {
+      m_IntakeMotor.Set(0.3);   // Slow forward
+    } else {
+      m_IntakeMotor.Set(-0.3);  // Slow backward
+    }
+  }
+
+  // ========== Indexer & Feeder (Run Together When Shooting) ==========
+  if (isShooting) {
     m_indexer.Set(0.8);
+    m_feeder.Set(0.8);
   } else {
     m_indexer.Set(0.0);
+    m_feeder.Set(0.0);
   }
 
-  // ========== Turret Auto-Targeting & Operator Controls ==========
-  // Hold Left Bumper to auto-target Hub using PhotonVision camera
-  m_autoTargetActive = m_controller.GetLeftBumperButton();
+  // ========== Turret: Always Auto-Targets Hub ==========
+  // Set alliance color from SmartDashboard chooser (affects which Hub to target)
+  m_turret.SetAllianceRed(m_teamColorChooser.GetSelected() == "Red");
 
-  if (m_autoTargetActive) {
-    m_turret.SetTargetingMode(Turret::TargetingMode::kAuto);
-    m_turret.UpdateAutoTarget(
-        m_swerve.positionFWDField,
-        m_swerve.positionSTRField,
-        units::angle::degree_t(GyroValue));
-  } else {
-    // Manual Jog fallback when not auto-targeting:
-    if (pov == 90) {
-      // D-Pad Right: Jog CW
-      m_turret.SetRotationSpeed(TurretConstants::kManualRotationSpeed);
-    } else if (pov == 270) {
-      // D-Pad Left: Jog CCW
-      m_turret.SetRotationSpeed(-TurretConstants::kManualRotationSpeed);
-    } else {
-      m_turret.SetRotationSpeed(0.0);
-    }
+  // Turret always tracks the Hub using PhotonVision camera + odometry fallback
+  m_turret.SetTargetingMode(Turret::TargetingMode::kAuto);
+  m_turret.UpdateAutoTarget(
+      m_swerve.positionFWDField,
+      m_swerve.positionSTRField,
+      units::angle::degree_t(GyroValue));
 
-    // Stop flywheel when X button is pressed
-    if (m_controller.GetXButtonPressed()) {
-      m_turret.StopShooter();
-    }
-  }
+  // Left trigger controls shooting:
+  //   Hold trigger  -> spin up flywheels + raise hood (based on distance)
+  //   Release       -> stop flywheels + lower hood all the way down
+  m_turret.Shoot(triggerL);
 
-  frc::SmartDashboard::PutBoolean("AutoTarget/Active", m_autoTargetActive);
-  frc::SmartDashboard::PutBoolean("AutoTarget/Locked", m_turret.IsTargetLocked());
+  // Display turret status
+  frc::SmartDashboard::PutBoolean("Turret/Locked", m_turret.IsTargetLocked());
+  frc::SmartDashboard::PutNumber("Turret/DistToHub", m_turret.GetTargetDistanceMeters());
 }
 
 void Robot::DisabledInit() {}

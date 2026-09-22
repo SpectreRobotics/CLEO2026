@@ -166,6 +166,20 @@ class Turret {
   TargetingMode GetTargetingMode() const { return m_targetingMode; }
 
   /**
+   * @brief Sets the alliance color for odometry-based Hub targeting.
+   * @param isRed true = Red alliance, false = Blue alliance.
+   */
+  void SetAllianceRed(bool isRed);
+
+  /**
+   * @brief Controls shooting based on trigger value.
+   *        Hold trigger (>0.15) to spin up flywheels + raise hood.
+   *        Release trigger to stop shooter + lower hood all the way.
+   * @param triggerValue Left trigger axis value (0.0 to 1.0).
+   */
+  void Shoot(double triggerValue);
+
+  /**
    * @brief Interpolates target flywheel RPM from calibrated ballistic table based on distance.
    */
   double CalculateTargetRPM(double distanceMeters) const;
@@ -221,5 +235,6 @@ class Turret {
   double m_targetDistanceMeters = 0.0;
   double m_dynamicToleranceDeg = TurretConstants::kMaxToleranceDeg;
   int m_targetFiducialId = -1;
+  bool m_isRedAlliance = false;  ///< Alliance color from SmartDashboard chooser
 };
 

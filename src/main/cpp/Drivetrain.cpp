@@ -255,6 +255,10 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue, double 
   wheelSpeedFR = (m_FR_Drive.GetVelocity().GetValueAsDouble() / DrivetrainConstants::DriveGearRatio) * (M_PI * DrivetrainConstants::WheelCircumference);
   wheelSpeedBL = (m_BL_Drive.GetVelocity().GetValueAsDouble() / DrivetrainConstants::DriveGearRatio) * (M_PI * DrivetrainConstants::WheelCircumference);
   wheelSpeedBR = (-m_BR_Drive.GetVelocity().GetValueAsDouble() / DrivetrainConstants::DriveGearRatio) * (M_PI * DrivetrainConstants::WheelCircumference);
+
+  // ========== Update Odometry with Wheel Data ==========
+  odometryUpdate(FL_pos, FR_pos, BL_pos, BR_pos,
+                 wheelSpeedFL, wheelSpeedFR, wheelSpeedBL, wheelSpeedBR, GyroValue);
 }
 
 double Drivetrain::MinimizeRotation(double targetAngleRad, double currentAngleRad, double& speedPercent) {
@@ -320,6 +324,100 @@ void Drivetrain::odometryUpdate(
   positionSTRField += units::length::meter_t(fieldSTR * odoDeltaTime);
   ROTField = frc::Rotation2d(units::angle::radian_t(odoROT));
 
-  frc::SmartDashboard::PutNumber("PositionForwardField", positionFWDField.value());
-  frc::SmartDashboard::PutNumber("PositionStrafeField", positionSTRField.value());
+  frc::SmartDashboard::PutNumber("Odometry/X", positionFWDField.value());
+  frc::SmartDashboard::PutNumber("Odometry/Y", positionSTRField.value());
+  frc::SmartDashboard::PutNumber("Odometry/Heading", ROTField.Degrees().value());
 }
+
+// ========== Dual Limelight Vision-Fused Positioning ==========
+
+void Drivetrain::UpdateVision(double GyroValue) {
+  // Send robot orientation to both Limelights for MegaTag2
+  // NOTE: Limelight expects CCW-positive yaw. Our GyroValue is negated (CW+),
+  //       so we negate it back to get the original Pigeon2 yaw (CCW+).
+  double llYaw = -GyroValue;
+  LimelightHelpers::SetRobotOrientation(
+      DrivetrainConstants::kLimelightLeft, llYaw, 0, 0, 0, 0, 0);
+  LimelightHelpers::SetRobotOrientation(
+      DrivetrainConstants::kLimelightRight, llYaw, 0, 0, 0, 0, 0);
+
+  // Process one Limelight and blend its pose into odometry
+  // Uses MegaTag2 (orientation-assisted) for best accuracy
+  auto processLimelight = [&](const char* name, const std::string& label) {
+    auto estimate = LimelightHelpers::getBotPoseEstimate_wpiBlue_MegaTag2(name);
+
+    // Display tag count on SmartDashboard
+    frc::SmartDashboard::PutNumber("Vision/" + label + "Tags", estimate.tagCount);
+
+    // Skip if no tags seen
+    if (estimate.tagCount == 0) return;
+
+    // Skip if tags are too far away to trust
+    if (estimate.avgTagDist > DrivetrainConstants::kMaxValidTagDistMeters) return;
+
+    double visionX = estimate.pose.X().value();
+    double visionY = estimate.pose.Y().value();
+
+    // Reject poses outside field bounds (sanity check)
+    if (visionX < 0 || visionX > DrivetrainConstants::kFieldLengthMeters) return;
+    if (visionY < 0 || visionY > DrivetrainConstants::kFieldWidthMeters) return;
+
+    // First valid vision pose seeds the odometry position
+    if (!m_hasInitialVisionPose) {
+      positionFWDField = units::length::meter_t(visionX);
+      positionSTRField = units::length::meter_t(visionY);
+      m_hasInitialVisionPose = true;
+      return;
+    }
+
+    // Complementary filter: trust multi-tag more (20%) than single-tag (8%)
+    double alpha = (estimate.tagCount >= 2)
+        ? DrivetrainConstants::kVisionMultiTagAlpha
+        : DrivetrainConstants::kVisionSingleTagAlpha;
+
+    // Blend vision pose into wheel odometry
+    positionFWDField = units::length::meter_t(
+        alpha * visionX + (1.0 - alpha) * positionFWDField.value());
+    positionSTRField = units::length::meter_t(
+        alpha * visionY + (1.0 - alpha) * positionSTRField.value());
+
+    m_visionTargetSeen = true;
+    m_lastVisionTagCount = estimate.tagCount;
+
+    frc::SmartDashboard::PutNumber("Vision/" + label + "PoseX", visionX);
+    frc::SmartDashboard::PutNumber("Vision/" + label + "PoseY", visionY);
+  };
+
+  // Process both Limelights
+  processLimelight(DrivetrainConstants::kLimelightLeft, "Left");
+  processLimelight(DrivetrainConstants::kLimelightRight, "Right");
+
+  // Display fused position after vision corrections
+  frc::SmartDashboard::PutBoolean("Vision/HasInitialPose", m_hasInitialVisionPose);
+  frc::SmartDashboard::PutBoolean("Vision/TargetSeen", m_visionTargetSeen);
+}
+
+void Drivetrain::SetPose(units::length::meter_t x, units::length::meter_t y) {
+  positionFWDField = x;
+  positionSTRField = y;
+  m_hasInitialVisionPose = true;
+}
+
+frc::Pose2d Drivetrain::GetFieldPose() const {
+  return frc::Pose2d(
+      frc::Translation2d(positionFWDField, positionSTRField),
+      ROTField);
+}
+
+std::array<frc::SwerveModuleState, 4> Drivetrain::GetModuleStates() const {
+  return {
+      frc::SwerveModuleState{units::velocity::meters_per_second_t(wheelSpeedFL),
+                             frc::Rotation2d(units::angle::radian_t(angleFL))},
+      frc::SwerveModuleState{units::velocity::meters_per_second_t(wheelSpeedFR),
+                             frc::Rotation2d(units::angle::radian_t(angleFR))},
+      frc::SwerveModuleState{units::velocity::meters_per_second_t(wheelSpeedBL),
+                             frc::Rotation2d(units::angle::radian_t(angleBL))},
+      frc::SwerveModuleState{units::velocity::meters_per_second_t(wheelSpeedBR),
+                             frc::Rotation2d(units::angle::radian_t(angleBR))}};
+}
+
