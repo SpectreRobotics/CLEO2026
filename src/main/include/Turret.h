@@ -180,6 +180,12 @@ class Turret {
   void Shoot(double triggerValue);
 
   /**
+   * @brief Steps physics simulation for turret azimuth rotation and flywheels.
+   * @param dt Timestep duration.
+   */
+  void UpdateSim(units::time::second_t dt);
+
+  /**
    * @brief Interpolates target flywheel RPM from calibrated ballistic table based on distance.
    */
   double CalculateTargetRPM(double distanceMeters) const;

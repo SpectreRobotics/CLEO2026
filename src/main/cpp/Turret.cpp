@@ -7,6 +7,9 @@
 #define _USE_MATH_DEFINES
 #include <algorithm>
 #include <cmath>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 #include <frc/DriverStation.h>
 #include <frc/smartdashboard/SmartDashboard.h>
 
@@ -372,3 +375,15 @@ void Turret::Shoot(double triggerValue) {
     SetHoodAngle(units::angle::degree_t(TurretConstants::kHoodMinAngleDeg));
   }
 }
+
+void Turret::UpdateSim(units::time::second_t dt) {
+  // Update simulated turret rotation towards target angle
+  m_rotationMotor.GetSimState().SetRawRotorPosition(
+      units::angle::turn_t(m_targetAngleDeg * TurretConstants::kMotorRotationsPerDegree));
+
+  // Update simulated flywheel velocity
+  double rps = m_targetShooterRPM / 60.0;
+  m_flywheelLeft.GetSimState().SetRotorVelocity(units::angular_velocity::turns_per_second_t(rps));
+  m_flywheelRight.GetSimState().SetRotorVelocity(units::angular_velocity::turns_per_second_t(-rps));
+}
+

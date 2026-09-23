@@ -421,3 +421,43 @@ std::array<frc::SwerveModuleState, 4> Drivetrain::GetModuleStates() const {
                              frc::Rotation2d(units::angle::radian_t(angleBR))}};
 }
 
+void Drivetrain::UpdateSim(units::time::second_t dt) {
+  using namespace units::literals;
+
+  // Max Kraken X60 free speed ~6000 RPM = 100 RPS
+  constexpr double kMaxRps = 100.0;
+
+  // Update drive motor velocities and positions from motor output commands
+  double rpsFL = m_FL_Drive.Get() * kMaxRps;
+  double rpsFR = m_FR_Drive.Get() * kMaxRps;
+  double rpsBL = m_BL_Drive.Get() * kMaxRps;
+  double rpsBR = -m_BR_Drive.Get() * kMaxRps;
+
+  m_FL_Drive.GetSimState().SetRotorVelocity(units::angular_velocity::turns_per_second_t(rpsFL));
+  m_FR_Drive.GetSimState().SetRotorVelocity(units::angular_velocity::turns_per_second_t(rpsFR));
+  m_BL_Drive.GetSimState().SetRotorVelocity(units::angular_velocity::turns_per_second_t(rpsBL));
+  m_BR_Drive.GetSimState().SetRotorVelocity(units::angular_velocity::turns_per_second_t(rpsBR));
+
+  m_FL_Drive.GetSimState().AddRotorPosition(units::angle::turn_t(rpsFL * dt.value()));
+  m_FR_Drive.GetSimState().AddRotorPosition(units::angle::turn_t(rpsFR * dt.value()));
+  m_BL_Drive.GetSimState().AddRotorPosition(units::angle::turn_t(rpsBL * dt.value()));
+  m_BR_Drive.GetSimState().AddRotorPosition(units::angle::turn_t(rpsBR * dt.value()));
+
+  // Update steer motor positions to match commanded angle
+  double turnsFL = (angleFL / (2.0 * M_PI)) * DrivetrainConstants::rotorToSensorRatio;
+  double turnsFR = (angleFR / (2.0 * M_PI)) * DrivetrainConstants::rotorToSensorRatio;
+  double turnsBL = (angleBL / (2.0 * M_PI)) * DrivetrainConstants::rotorToSensorRatio;
+  double turnsBR = (angleBR / (2.0 * M_PI)) * DrivetrainConstants::rotorToSensorRatio;
+
+  m_FL_Steer.GetSimState().SetRawRotorPosition(units::angle::turn_t(turnsFL));
+  m_FR_Steer.GetSimState().SetRawRotorPosition(units::angle::turn_t(turnsFR));
+  m_BL_Steer.GetSimState().SetRawRotorPosition(units::angle::turn_t(turnsBL));
+  m_BR_Steer.GetSimState().SetRawRotorPosition(units::angle::turn_t(turnsBR));
+
+  CANcoderFL.GetSimState().SetRawPosition(units::angle::turn_t(angleFL / (2.0 * M_PI)));
+  CANcoderFR.GetSimState().SetRawPosition(units::angle::turn_t(angleFR / (2.0 * M_PI)));
+  CANcoderBL.GetSimState().SetRawPosition(units::angle::turn_t(angleBL / (2.0 * M_PI)));
+  CANcoderBR.GetSimState().SetRawPosition(units::angle::turn_t(angleBR / (2.0 * M_PI)));
+}
+
+

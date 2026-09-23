@@ -128,6 +128,12 @@ class Drivetrain {
          */
         std::array<frc::SwerveModuleState, 4> GetModuleStates() const;
 
+        /**
+         * @brief Updates physics simulation for swerve drive and steer motors
+         * @param dt Timestep duration
+         */
+        void UpdateSim(units::time::second_t dt);
+
         // ========== Odometry & Vision State (Public for access from Robot & Turret) ==========
         units::length::meter_t positionFWDField = units::length::meter_t(0);  ///< Forward position (meters)
         units::length::meter_t positionSTRField = units::length::meter_t(0);  ///< Strafe position (meters)

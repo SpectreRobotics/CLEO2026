@@ -12,6 +12,10 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
 
+#ifdef GetObject
+#undef GetObject
+#endif
+
 Robot::Robot() {
   m_chooser.SetDefaultOption(kAutoNameDefault, kAutoNameDefault);
   m_chooser.AddOption(kAutoNameCustom, kAutoNameCustom);
@@ -91,10 +95,10 @@ void Robot::RobotPeriodic() {
   // Show Hub Target and Turret Direction on AdvantageScope 2D Field
   double targetX = (m_teamColorChooser.GetSelected() == "Red") ? TurretConstants::kRedHubX : TurretConstants::kBlueHubX;
   double targetY = (m_teamColorChooser.GetSelected() == "Red") ? TurretConstants::kRedHubY : TurretConstants::kBlueHubY;
-  m_field.GetObject("HubTarget")->SetPose(frc::Pose2d(units::length::meter_t(targetX), units::length::meter_t(targetY), frc::Rotation2d{}));
+  (m_field.GetObject)("HubTarget")->SetPose(frc::Pose2d(units::length::meter_t(targetX), units::length::meter_t(targetY), frc::Rotation2d{}));
 
   frc::Pose2d turretPose{fusedPose.Translation(), fusedPose.Rotation() + frc::Rotation2d(units::angle::degree_t(m_turret.GetRotationAngleDegrees()))};
-  m_field.GetObject("Turret")->SetPose(turretPose);
+  (m_field.GetObject)("Turret")->SetPose(turretPose);
 }
 
 void Robot::AutonomousInit() {
@@ -221,7 +225,24 @@ void Robot::TestPeriodic() {}
 
 void Robot::SimulationInit() {}
 
-void Robot::SimulationPeriodic() {}
+void Robot::SimulationPeriodic() {
+  using namespace units::literals;
+
+  // Step drivetrain swerve module simulation physics
+  m_swerve.UpdateSim(20_ms);
+
+  // Update simulated Pigeon2 gyro yaw based on rotation input
+  if (std::abs(x2) > 0.05) {
+    m_pigeon.GetSimState().AddYaw(units::angle::degree_t(-x2 * 360.0 * 0.02));
+  }
+
+  // Step slide motor simulation physics
+  m_slideMotor.GetSimState().AddRotorPosition(
+      units::angle::turn_t(m_slideMotor.Get() * 25.0 * 0.02));
+
+  // Step turret simulation physics
+  m_turret.UpdateSim(20_ms);
+}
 
 #ifndef RUNNING_FRC_TESTS
 int main() {

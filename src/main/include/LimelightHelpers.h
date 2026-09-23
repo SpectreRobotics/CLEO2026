@@ -5,6 +5,14 @@
 //https://github.com/LimelightVision/limelightlib-wpicpp
 ///
 
+#ifndef _USE_MATH_DEFINES
+#define _USE_MATH_DEFINES
+#endif
+#include <cmath>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 #include "networktables/NetworkTable.h"
 #include "networktables/NetworkTableInstance.h"
 #include "networktables/NetworkTableEntry.h"
@@ -13,7 +21,13 @@
 #include "wpi/json.h"
 #include <string>
 #ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
+#ifdef GetObject
+#undef GetObject
+#endif
 #else
 #include <unistd.h>
 #endif
