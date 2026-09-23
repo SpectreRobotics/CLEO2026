@@ -271,9 +271,11 @@ void Robot::SimulationPeriodic() {
     m_pigeon.GetSimState().AddYaw(units::angle::degree_t(-x2 * 360.0 * 0.02));
   }
 
-  // Step slide motor simulation physics
-  m_slideMotor.GetSimState().AddRotorPosition(
-      units::angle::turn_t(m_slideMotor.Get() * 25.0 * 0.02));
+  // Step slide motor simulation physics (clamped between 0.0 home and 1.0 ft hardstop)
+  double currentSlideRot = m_slideMotor.GetPosition().GetValueAsDouble();
+  double nextSlideRot = currentSlideRot + (m_slideMotor.Get() * 25.0 * 0.02);
+  nextSlideRot = std::clamp(nextSlideRot, 0.0, kSlideOneFootRotations);
+  m_slideMotor.GetSimState().SetRawRotorPosition(units::angle::turn_t(nextSlideRot));
 
   // Step turret simulation physics
   m_turret.UpdateSim(20_ms);
