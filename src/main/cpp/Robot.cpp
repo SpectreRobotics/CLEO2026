@@ -310,30 +310,37 @@ bool Robot::IsPS5() const {
 }
 
 double Robot::GetDriverLeftX() const {
+  if (!frc::DriverStation::IsJoystickConnected(0)) return 0.0;
   return IsPS5() ? m_ps5Controller.GetLeftX() : m_xboxController.GetLeftX();
 }
 
 double Robot::GetDriverLeftY() const {
+  if (!frc::DriverStation::IsJoystickConnected(0)) return 0.0;
   return IsPS5() ? m_ps5Controller.GetLeftY() : m_xboxController.GetLeftY();
 }
 
 double Robot::GetDriverRightX() const {
+  if (!frc::DriverStation::IsJoystickConnected(0)) return 0.0;
   return IsPS5() ? m_ps5Controller.GetRightX() : m_xboxController.GetRightX();
 }
 
 double Robot::GetDriverLeftTrigger() const {
+  if (!frc::DriverStation::IsJoystickConnected(0)) return 0.0;
   return IsPS5() ? m_ps5Controller.GetL2Axis() : m_xboxController.GetLeftTriggerAxis();
 }
 
 double Robot::GetDriverRightTrigger() const {
+  if (!frc::DriverStation::IsJoystickConnected(0)) return 0.0;
   return IsPS5() ? m_ps5Controller.GetR2Axis() : m_xboxController.GetRightTriggerAxis();
 }
 
 bool Robot::GetDriverRightBumperPressed() {
+  if (!frc::DriverStation::IsJoystickConnected(0)) return false;
   return IsPS5() ? m_ps5Controller.GetR1ButtonPressed() : m_xboxController.GetRightBumperButtonPressed();
 }
 
 bool Robot::GetDriverResetGyroPressed() {
+  if (!frc::DriverStation::IsJoystickConnected(0)) return false;
   if (IsPS5()) {
     return m_ps5Controller.GetCreateButtonPressed() || m_ps5Controller.GetTouchpadButtonPressed();
   }
@@ -341,6 +348,7 @@ bool Robot::GetDriverResetGyroPressed() {
 }
 
 int Robot::GetDriverPOV() const {
+  if (!frc::DriverStation::IsJoystickConnected(0)) return -1;
   return IsPS5() ? m_ps5Controller.GetPOV() : m_xboxController.GetPOV();
 }
 
