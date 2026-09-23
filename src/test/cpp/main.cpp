@@ -97,6 +97,146 @@ TEST(TurretTargetingTest, OdometryAngleCalculation) {
   EXPECT_NEAR(robotRelAngle3, 60.0, 1e-4);
 }
 
+// Test Swerve Odometry Integration Math (WPILib NWU Blue Alliance coordinates)
+TEST(DrivetrainOdometryTest, WheelVelocityToFieldPositionIntegration) {
+  double positionX = 2.0;
+  double positionY = 4.0;
+  double dt = 0.02; // 50 Hz loop
+
+  auto integrateOdometry = [&](double odoFWD, double odoSTR, double gyroDeg) {
+    double gyroRad = gyroDeg * M_PI / 180.0;
+    double fieldFWD = odoFWD * std::cos(gyroRad) + odoSTR * std::sin(gyroRad);
+    double fieldSTR = -odoFWD * std::sin(gyroRad) + odoSTR * std::cos(gyroRad);
+    positionX += fieldFWD * dt;
+    positionY -= fieldSTR * dt;
+  };
+
+  // Case 1: Drive forward at 2.0 m/s for 1 second (50 steps) at heading 0
+  for (int i = 0; i < 50; ++i) {
+    integrateOdometry(2.0, 0.0, 0.0);
+  }
+  EXPECT_NEAR(positionX, 4.0, 1e-4);
+  EXPECT_NEAR(positionY, 4.0, 1e-4);
+
+  // Case 2: Strafe right at 1.0 m/s for 1 second (50 steps) at heading 0 (odoSTR > 0 is Right)
+  // In WPILib, Right is -Y, so positionY should decrease from 4.0 to 3.0
+  for (int i = 0; i < 50; ++i) {
+    integrateOdometry(0.0, 1.0, 0.0);
+  }
+  EXPECT_NEAR(positionX, 4.0, 1e-4);
+  EXPECT_NEAR(positionY, 3.0, 1e-4);
+
+  // Case 3: Strafe left at 1.0 m/s for 1 second (50 steps) at heading 0 (odoSTR < 0 is Left)
+  for (int i = 0; i < 50; ++i) {
+    integrateOdometry(0.0, -1.0, 0.0);
+  }
+  EXPECT_NEAR(positionX, 4.0, 1e-4);
+  EXPECT_NEAR(positionY, 4.0, 1e-4);
+
+  // Case 4: Turned 90 deg CCW (facing Left/+Y) and driving forward at 1.5 m/s for 1 second
+  // Robot forward should now translate directly to field +Y (increasing Y)
+  for (int i = 0; i < 50; ++i) {
+    integrateOdometry(1.5, 0.0, 90.0);
+  }
+  EXPECT_NEAR(positionX, 4.0, 1e-4);
+  EXPECT_NEAR(positionY, 5.5, 1e-4);
+}
+
+// Test Turret Odometry Fallback Aiming & Shooting Distance / RPM
+TEST(TurretTargetingTest, OdometryFallbackHubTargetingAndBallistics) {
+  // Simulate robot on field at (2.0, 4.05) facing forward (heading 0 deg)
+  // Blue Hub is at (4.63, 4.05)
+  double robotX = 2.0;
+  double robotY = 4.05;
+  double headingDeg = 0.0;
+
+  double hubX = TurretConstants::kBlueHubX;
+  double hubY = TurretConstants::kBlueHubY;
+
+  double dx = hubX - robotX;
+  double dy = hubY - robotY;
+  double odomDist = std::hypot(dx, dy);
+
+  // Distance should be exactly 4.63 - 2.0 = 2.63 meters
+  EXPECT_NEAR(odomDist, 2.63, 1e-4);
+
+  // Target angle should be straight ahead (0 deg)
+  double fieldAngleDeg = std::atan2(dy, dx) * (180.0 / M_PI);
+  double robotRelAngle = std::remainder(fieldAngleDeg - headingDeg, 360.0);
+  if (robotRelAngle < 0.0) robotRelAngle += 360.0;
+  EXPECT_NEAR(robotRelAngle, 0.0, 1e-4);
+
+  // Interpolate RPM & hood for this 2.63m odometry distance
+  const auto& table = TurretConstants::kBallisticTable;
+  auto interpRPM = [&](double dist) {
+    double clamped = std::clamp(dist, table.front().distanceMeters, table.back().distanceMeters);
+    for (size_t i = 0; i < table.size() - 1; ++i) {
+      if (clamped >= table[i].distanceMeters && clamped <= table[i + 1].distanceMeters) {
+        double t = (clamped - table[i].distanceMeters) / (table[i + 1].distanceMeters - table[i].distanceMeters);
+        return table[i].shooterRPM + t * (table[i + 1].shooterRPM - table[i].shooterRPM);
+      }
+    }
+    return table.front().shooterRPM;
+  };
+
+  // At 2.5m: 2600 RPM. At 3.5m: 3050 RPM.
+  // At 2.63m: 2600 + (0.13 / 1.0) * 450 = 2658.5 RPM
+  double rpm = interpRPM(odomDist);
+  EXPECT_NEAR(rpm, 2658.5, 1.0);
+
+  // Red Hub check: Red Hub is at (11.91, 4.05)
+  // If robot is at (9.0, 4.05), dx = 2.91m
+  double redDist = std::hypot(TurretConstants::kRedHubX - 9.0, TurretConstants::kRedHubY - 4.05);
+  EXPECT_NEAR(redDist, 2.91, 1e-4);
+  double redRPM = interpRPM(redDist);
+  // At 2.5m: 2600. At 3.5m: 3050. (0.41 / 1.0) * 450 = 184.5 -> 2784.5 RPM
+  EXPECT_NEAR(redRPM, 2784.5, 1.0);
+}
+
+// Test Vision Yaw Sign Correction (Target to right must turn turret right/CW)
+TEST(TurretTargetingTest, VisionYawSignCorrection) {
+  double currentAngle = 90.0; // Turret pointing left (CCW+)
+
+  // Target is 10 deg to the RIGHT of camera crosshair (PhotonVision yaw = +10.0)
+  double visionYaw = 10.0;
+  double targetTurretDeg = currentAngle + (visionYaw * TurretConstants::kVisionYawSign);
+
+  // With kVisionYawSign = -1.0, the turret should decrease angle to 80 deg (turning right toward target)
+  EXPECT_DOUBLE_EQ(targetTurretDeg, 80.0);
+
+  // Target is 15 deg to the LEFT of camera crosshair (PhotonVision yaw = -15.0)
+  visionYaw = -15.0;
+  targetTurretDeg = currentAngle + (visionYaw * TurretConstants::kVisionYawSign);
+
+  // Turret should increase angle to 105 deg (turning left toward target)
+  EXPECT_DOUBLE_EQ(targetTurretDeg, 105.0);
+}
+
+// Test Shooting Interlock Logic
+TEST(TurretTargetingTest, ReadyToShootInterlock) {
+  auto isReadyToShoot = [](bool targetLocked, double targetRPM, double actualRPM) {
+    bool speedOk = (targetRPM > 500.0) && (std::abs(actualRPM - targetRPM) <= 150.0);
+    return targetLocked && speedOk;
+  };
+
+  // Flywheels stopped (0 RPM) -> NOT ready to shoot
+  EXPECT_FALSE(isReadyToShoot(true, 2600.0, 0.0));
+
+  // Flywheels spinning up (1500 RPM / 2600 RPM) -> NOT ready
+  EXPECT_FALSE(isReadyToShoot(true, 2600.0, 1500.0));
+
+  // Flywheels at speed (2580 RPM / 2600 RPM) but turret NOT locked -> NOT ready
+  EXPECT_FALSE(isReadyToShoot(false, 2600.0, 2580.0));
+
+  // Both turret locked AND flywheels at speed -> READY TO SHOOT
+  EXPECT_TRUE(isReadyToShoot(true, 2600.0, 2580.0));
+  EXPECT_TRUE(isReadyToShoot(true, 2600.0, 2600.0));
+  EXPECT_TRUE(isReadyToShoot(true, 2600.0, 2720.0));
+
+  // Overspeed beyond tolerance (+200 RPM) -> NOT ready
+  EXPECT_FALSE(isReadyToShoot(true, 2600.0, 2850.0));
+}
+
 int main(int argc, char** argv) {
   HAL_Initialize(500, 0);
   ::testing::InitGoogleTest(&argc, argv);

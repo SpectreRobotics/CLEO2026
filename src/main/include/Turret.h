@@ -100,6 +100,18 @@ class Turret {
    */
   bool IsShooterAtSpeed(double targetRPM, double toleranceRPM = 100.0);
 
+  /**
+   * @brief Gets current target shooter velocity in RPM.
+   */
+  double GetTargetShooterRPM() const { return m_targetShooterRPM; }
+
+  /**
+   * @brief Checks if the turret is locked on target AND shooter is up to speed.
+   */
+  bool IsReadyToShoot() {
+    return m_targetLocked && (m_targetShooterRPM > 500.0) && IsShooterAtSpeed(m_targetShooterRPM, 150.0);
+  }
+
   // ========== Hood Pitch Servos (2x REV Smart Servos) ==========
   /**
    * @brief Sets the hood angle in degrees (adjusts trajectory pitch).
@@ -242,5 +254,6 @@ class Turret {
   double m_dynamicToleranceDeg = TurretConstants::kMaxToleranceDeg;
   int m_targetFiducialId = -1;
   bool m_isRedAlliance = false;  ///< Alliance color from SmartDashboard chooser
+  units::time::second_t m_lastVisionTargetTime{0_s};
 };
 

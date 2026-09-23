@@ -27,7 +27,7 @@ class DrivetrainConstants {
     // ========== Drive Motor Configuration ==========
     static constexpr double DriveMotorsHardLimit = 0.75;    ///< Max drive motor output (0.0-1.0)
     static constexpr double DriveGearRatio = 5.0;           ///< Drive gearbox reduction ratio (5:1)
-    static constexpr double WheelCircumference = 0.102;     ///< Wheel circumference (meters, ~4" diameter)
+    static constexpr double WheelCircumference = 0.102;     ///< Wheel diameter (meters, ~4" diameter; multiplied by PI in code for circumference)
 
     // ========== Speed Control ==========
     static constexpr double TriggerConstant = 30.0;         ///< Speed scaling factor for triggers

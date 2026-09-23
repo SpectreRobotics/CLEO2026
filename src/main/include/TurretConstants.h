@@ -69,7 +69,7 @@ namespace TurretConstants {
 
   // ========== PhotonVision Camera Configuration ==========
   constexpr std::string_view kCameraName = "turret_camera"; ///< Camera name in PhotonVision UI
-  constexpr double kVisionYawSign = 1.0;                   ///< 1.0 if CCW positive, -1.0 if inverted
+  constexpr double kVisionYawSign = -1.0;                  ///< -1.0: PhotonVision yaw is positive right, CCW+ turret turns right by decreasing angle
   constexpr double kCameraMountYawOffsetDeg = 0.0;         ///< Optical bore alignment offset (deg)
   constexpr double kCameraMountPitchDeg = 25.0;            ///< Camera pitch angle above horizontal (deg)
   constexpr double kCameraMountHeightMeters = 0.55;        ///< Lens center height above floor (m)

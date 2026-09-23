@@ -191,6 +191,8 @@ class Drivetrain {
         double FWD = 0;
         double STR = 0;
         double targetAngle = 0;
+        double m_headingIError = 0.0;
+        double m_headingLastError = 0.0;
 
         // ========== Wheel Velocities ==========
         double wheelSpeedFL = 0, wheelSpeedFR = 0, wheelSpeedBL = 0, wheelSpeedBR = 0;

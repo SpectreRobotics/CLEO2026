@@ -209,10 +209,10 @@ double Turret::CalculateTargetHoodAngle(double distanceMeters) const {
 }
 
 void Turret::SetShooterAndHoodForDistance(double distanceMeters) {
-  if (distanceMeters > 0.5) {
-    SetShooterRPM(CalculateTargetRPM(distanceMeters));
-    SetHoodAngle(units::angle::degree_t(CalculateTargetHoodAngle(distanceMeters)));
-  }
+  const auto& table = TurretConstants::kBallisticTable;
+  double clampedDist = std::clamp(distanceMeters, table.front().distanceMeters, table.back().distanceMeters);
+  SetShooterRPM(CalculateTargetRPM(clampedDist));
+  SetHoodAngle(units::angle::degree_t(CalculateTargetHoodAngle(clampedDist)));
 }
 
 void Turret::UpdateAutoTarget(units::length::meter_t robotX,
@@ -231,28 +231,33 @@ void Turret::UpdateAutoTarget(units::length::meter_t robotX,
     if (latestResult.HasTargets()) {
       auto bestTarget = latestResult.GetBestTarget();
       visionFound = true;
+      m_lastVisionTargetTime = frc::Timer::GetFPGATimestamp();
       m_hasVisionTarget = true;
       m_visionYawDeg = bestTarget.GetYaw();
       m_visionPitchDeg = bestTarget.GetPitch();
       m_targetFiducialId = bestTarget.GetFiducialId();
 
-      // Estimate distance from 3D camera-to-target transform or pitch trigonometry
-      auto transform = bestTarget.GetBestCameraToTarget();
-      double dist3d = std::hypot(transform.X().value(), transform.Y().value());
-      if (dist3d > 0.4) {
-        m_targetDistanceMeters = dist3d;
+      // Robust ground distance using pitch trigonometry
+      double totalPitchRad = (TurretConstants::kCameraMountPitchDeg + m_visionPitchDeg) * (M_PI / 180.0);
+      double deltaH = TurretConstants::kHubTargetHeightMeters - TurretConstants::kCameraMountHeightMeters;
+      if (totalPitchRad > 0.05 && deltaH > 0.0) {
+        m_targetDistanceMeters = deltaH / std::tan(totalPitchRad);
       } else {
-        double totalPitchRad = (TurretConstants::kCameraMountPitchDeg + m_visionPitchDeg) * (M_PI / 180.0);
-        double deltaH = TurretConstants::kHubTargetHeightMeters - TurretConstants::kCameraMountHeightMeters;
-        if (totalPitchRad > 0.05) {
-          m_targetDistanceMeters = deltaH / std::tan(totalPitchRad);
+        auto transform = bestTarget.GetBestCameraToTarget();
+        double dist3d = std::hypot(transform.X().value(), transform.Y().value());
+        if (dist3d > 0.4) {
+          m_targetDistanceMeters = dist3d;
         }
       }
     }
   }
 
+  // Grace period: maintain vision lock for 150ms across frame drops to prevent 50Hz chatter
   if (!visionFound) {
-    m_hasVisionTarget = false;
+    units::time::second_t now = frc::Timer::GetFPGATimestamp();
+    if (now - m_lastVisionTargetTime > 0.15_s) {
+      m_hasVisionTarget = false;
+    }
   }
 
   // 2. Closed-loop control selection

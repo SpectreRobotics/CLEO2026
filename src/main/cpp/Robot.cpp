@@ -30,10 +30,20 @@ Robot::Robot() {
   m_swerve.ConfigureMotors();
 
   // Configure slide motor (Kraken X44) in brake mode and zero position
-  ctre::phoenix6::configs::MotorOutputConfigs slideConfig{};
-  slideConfig.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
+  ctre::phoenix6::configs::TalonFXConfiguration slideConfig{};
+  slideConfig.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
+  slideConfig.CurrentLimits.StatorCurrentLimitEnable = true;
+  slideConfig.CurrentLimits.StatorCurrentLimit = units::current::ampere_t(40.0);
   m_slideMotor.GetConfigurator().Apply(slideConfig);
   m_slideMotor.SetPosition(0_tr);
+
+  // Configure intake, indexer, and feeder current limits to prevent stall burnout
+  ctre::phoenix6::configs::CurrentLimitsConfigs mechLimits{};
+  mechLimits.StatorCurrentLimitEnable = true;
+  mechLimits.StatorCurrentLimit = units::current::ampere_t(40.0);
+  m_IntakeMotor.GetConfigurator().Apply(mechLimits);
+  m_indexer.GetConfigurator().Apply(mechLimits);
+  m_feeder.GetConfigurator().Apply(mechLimits);
 
   // Configure modular turret subsystem (Kraken X44 rotation, 2x Kraken X60 shooter, 2x REV servos)
   m_turret.ConfigureMotors();
@@ -79,7 +89,7 @@ void Robot::RobotPeriodic() {
   if (GetDriverResetGyroPressed()) {
     m_pigeon.Reset();
   }
-  GyroValue = -std::fmod(m_pigeon.GetYaw().GetValueAsDouble(), 360.0);
+  GyroValue = std::fmod(m_pigeon.GetYaw().GetValueAsDouble(), 360.0);
   frc::SmartDashboard::PutNumber("Gyro Heading", GyroValue);
   frc::SmartDashboard::PutString("Controller/ActiveType", IsPS5() ? "PS5 DualSense" : "Xbox");
 
@@ -190,8 +200,12 @@ void Robot::TeleopPeriodic() {
     m_slideMotor.Set(-kSlideSpeed);
   } else if (m_intakeOut) {
     // ---- INTAKE OUT ----
-    // Slide runs forward until it hits the physical hardstop
-    m_slideMotor.Set(kSlideSpeed);
+    // Slide runs forward until it reaches target extension
+    if (slidePos < kSlideOneFootRotations) {
+      m_slideMotor.Set(kSlideSpeed);
+    } else {
+      m_slideMotor.Set(0.0);
+    }
     // Intake roller spins when the slide is out
     m_IntakeMotor.Set(kIntakeSpeed);
   } else {
@@ -220,15 +234,6 @@ void Robot::TeleopPeriodic() {
     }
   }
 
-  // ========== Indexer & Feeder (Run Together When Shooting) ==========
-  if (isShooting) {
-    m_indexer.Set(0.8);
-    m_feeder.Set(0.8);
-  } else {
-    m_indexer.Set(0.0);
-    m_feeder.Set(0.0);
-  }
-
   // ========== Turret: Always Auto-Targets Hub ==========
   // Set alliance color from SmartDashboard chooser (affects which Hub to target)
   m_turret.SetAllianceRed(m_teamColorChooser.GetSelected() == "Red");
@@ -241,9 +246,22 @@ void Robot::TeleopPeriodic() {
       units::angle::degree_t(GyroValue));
 
   // Left trigger controls shooting:
-  //   Hold trigger  -> spin up flywheels + raise hood (based on distance)
+  //   Hold trigger  -> spin up flywheels + raise hood (based on distance from vision or odometry)
   //   Release       -> stop flywheels + lower hood all the way down
   m_turret.Shoot(triggerL);
+
+  // ========== Indexer & Feeder (Run When Shooting AND Flywheels/Turret Ready) ==========
+  // Safely interlock feeding so balls only feed into flywheels that are at speed and locked on target
+  bool isReadyToShoot = m_turret.IsReadyToShoot();
+  frc::SmartDashboard::PutBoolean("Turret/ReadyToShoot", isReadyToShoot);
+
+  if (isShooting && isReadyToShoot) {
+    m_indexer.Set(0.8);
+    m_feeder.Set(0.8);
+  } else {
+    m_indexer.Set(0.0);
+    m_feeder.Set(0.0);
+  }
 
   // Display turret status
   frc::SmartDashboard::PutBoolean("Turret/Locked", m_turret.IsTargetLocked());

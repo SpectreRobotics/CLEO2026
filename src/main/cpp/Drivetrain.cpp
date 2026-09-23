@@ -127,19 +127,21 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue, double 
 
   // ========== Calculate Delta Time ==========
   units::time::second_t currentTime = frc::Timer::GetFPGATimestamp();
+  if (lastTime == 0_s) {
+    lastTime = currentTime;
+  }
   units::time::second_t deltaTime = currentTime - lastTime;
   lastTime = currentTime;
 
   // ========== Initialize Drive Vectors ==========
-  double STR = x;  // Strafe (left/right)
-  double FWD = y;  // Forward (forward/back)
-  double iError = 0;
-  double lastError = 0;
+  double STR = x;  // Strafe (left/right, positive right)
+  double FWD = y;  // Forward (forward/back, positive forward)
 
-  // ========== Field-Centric Transformation ==========
+  // ========== Field-Centric Transformation (CCW+ Heading) ==========
   if (FieldCentric) {
-    double temp = FWD * std::cos(GyroValue * M_PI / 180.0) + STR * std::sin(GyroValue * M_PI / 180.0);
-    STR = -FWD * std::sin(GyroValue * M_PI / 180.0) + STR * std::cos(GyroValue * M_PI / 180.0);
+    double rad = GyroValue * M_PI / 180.0;
+    double temp = FWD * std::cos(rad) - STR * std::sin(rad);
+    STR = FWD * std::sin(rad) + STR * std::cos(rad);
     FWD = temp;
   } else {
     STR = x;
@@ -148,16 +150,16 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue, double 
 
   // ========== PID Heading Lock ==========
   double intDeltaTime = deltaTime.value();
-  if (intDeltaTime <= 0.0) intDeltaTime = 0.02;
+  if (intDeltaTime <= 0.0 || intDeltaTime > 0.1) intDeltaTime = 0.02;
   double error = std::remainder(targetAngle - GyroValue, 360.0);
-  iError += error * intDeltaTime;
-  double dError = (error - lastError) / intDeltaTime;
+  m_headingIError += error * intDeltaTime;
+  double dError = (error - m_headingLastError) / intDeltaTime;
 
   double output = DrivetrainConstants::straightP * error +
-                  DrivetrainConstants::straightI * iError +
+                  DrivetrainConstants::straightI * m_headingIError +
                   dError * DrivetrainConstants::straightD;
   output = std::clamp(output, -1.0 * DrivetrainConstants::outputClamp, DrivetrainConstants::outputClamp);
-  lastError = error;
+  m_headingLastError = error;
 
   if (x2 != 0) {
     targetAngle = GyroValue;
@@ -288,8 +290,13 @@ void Drivetrain::odometryUpdate(
     double GyroValue) {
 
   units::time::second_t odoCurrentTime = frc::Timer::GetFPGATimestamp();
+  if (odoLastTime == 0_s) {
+    odoLastTime = odoCurrentTime;
+    return;
+  }
   odoDeltaTime = (odoCurrentTime - odoLastTime).value();
   odoLastTime = odoCurrentTime; 
+  if (odoDeltaTime > 0.1) odoDeltaTime = 0.02;
 
   double B_FL = std::sin(angleFL) * wheelSpeedFL;
   double B_FR = std::sin(angleFR) * wheelSpeedFR;
@@ -306,23 +313,19 @@ void Drivetrain::odometryUpdate(
   double C = (C_FR + C_BR) / 2.0;
   double D = (D_FL + D_BL) / 2.0;
 
-  double odoROT = (GyroValue * M_PI / 180.0);
+  odoSTR = (A + B) / 2.0;
+  odoFWD = (C + D) / 2.0;
 
-  double FWD1 = odoROT * (DrivetrainConstants::L / 2.0) + A;
-  double FWD2 = -odoROT * (DrivetrainConstants::L / 2.0) + B;
-  odoSTR = ((FWD1 + FWD2) / 2.0);
-
-  double STR1 = odoROT * (DrivetrainConstants::W / 2.0) + C;
-  double STR2 = -odoROT * (DrivetrainConstants::W / 2.0) + D;
-  odoFWD = (STR1 + STR2) / 2.0;
-
+  // Transform robot velocities to field velocities using standard CCW+ heading
   double gyroRad = GyroValue * M_PI / 180.0;
-  double fieldFWD = odoFWD * std::cos(gyroRad) - odoSTR * std::sin(gyroRad);
-  double fieldSTR = odoFWD * std::sin(gyroRad) + odoSTR * std::cos(gyroRad);
+  double fieldFWD = odoFWD * std::cos(gyroRad) + odoSTR * std::sin(gyroRad);
+  double fieldSTR = -odoFWD * std::sin(gyroRad) + odoSTR * std::cos(gyroRad);
 
-  positionFWDField -= units::length::meter_t(fieldFWD * odoDeltaTime);
-  positionSTRField += units::length::meter_t(fieldSTR * odoDeltaTime);
-  ROTField = frc::Rotation2d(units::angle::radian_t(odoROT));
+  // WPILib coordinate convention: +X is Forward (towards opposing alliance), +Y is Left
+  // Since odoSTR is positive Right, moving Right decreases field Y
+  positionFWDField += units::length::meter_t(fieldFWD * odoDeltaTime);
+  positionSTRField -= units::length::meter_t(fieldSTR * odoDeltaTime);
+  ROTField = frc::Rotation2d(units::angle::degree_t(GyroValue));
 
   frc::SmartDashboard::PutNumber("Odometry/X", positionFWDField.value());
   frc::SmartDashboard::PutNumber("Odometry/Y", positionSTRField.value());
@@ -332,14 +335,11 @@ void Drivetrain::odometryUpdate(
 // ========== Dual Limelight Vision-Fused Positioning ==========
 
 void Drivetrain::UpdateVision(double GyroValue) {
-  // Send robot orientation to both Limelights for MegaTag2
-  // NOTE: Limelight expects CCW-positive yaw. Our GyroValue is negated (CW+),
-  //       so we negate it back to get the original Pigeon2 yaw (CCW+).
-  double llYaw = -GyroValue;
+  // Send robot orientation to both Limelights for MegaTag2 (standard CCW+ yaw)
   LimelightHelpers::SetRobotOrientation(
-      DrivetrainConstants::kLimelightLeft, llYaw, 0, 0, 0, 0, 0);
+      DrivetrainConstants::kLimelightLeft, GyroValue, 0, 0, 0, 0, 0);
   LimelightHelpers::SetRobotOrientation(
-      DrivetrainConstants::kLimelightRight, llYaw, 0, 0, 0, 0, 0);
+      DrivetrainConstants::kLimelightRight, GyroValue, 0, 0, 0, 0, 0);
 
   // Process one Limelight and blend its pose into odometry
   // Uses MegaTag2 (orientation-assisted) for best accuracy
