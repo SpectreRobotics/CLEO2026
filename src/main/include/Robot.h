@@ -15,6 +15,8 @@
 #include <frc/smartdashboard/SendableChooser.h>
 #include <frc/geometry/Pose2d.h>
 #include <frc/geometry/struct/Pose2dStruct.h>
+#include <frc/geometry/Pose3d.h>
+#include <frc/geometry/struct/Pose3dStruct.h>
 #include <frc/kinematics/SwerveModuleState.h>
 #include <frc/kinematics/struct/SwerveModuleStateStruct.h>
 #include <networktables/NetworkTableInstance.h>
@@ -107,4 +109,6 @@ class Robot : public frc::TimedRobot {
   frc::Field2d m_field;
   nt::StructPublisher<frc::Pose2d> m_posePub;
   nt::StructArrayPublisher<frc::SwerveModuleState> m_moduleStatesPub;
+  nt::StructPublisher<frc::Pose3d> m_robotPose3dPub;
+  nt::StructArrayPublisher<frc::Pose3d> m_componentPosesPub;
 };

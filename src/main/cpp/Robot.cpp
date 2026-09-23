@@ -64,6 +64,10 @@ Robot::Robot() {
   auto inst = nt::NetworkTableInstance::GetDefault();
   m_posePub = inst.GetTable("SmartDashboard")->GetStructTopic<frc::Pose2d>("RobotPose").Publish();
   m_moduleStatesPub = inst.GetTable("SmartDashboard")->GetStructArrayTopic<frc::SwerveModuleState>("SwerveStates").Publish();
+
+  // AdvantageScope 3D Field & CAD Robot model publishers
+  m_robotPose3dPub = inst.GetTable("SmartDashboard")->GetStructTopic<frc::Pose3d>("RobotPose3d").Publish();
+  m_componentPosesPub = inst.GetTable("SmartDashboard")->GetStructArrayTopic<frc::Pose3d>("ComponentPoses").Publish();
 }
 
 void Robot::Intake() {
@@ -106,6 +110,30 @@ void Robot::RobotPeriodic() {
 
   frc::Pose2d turretPose{fusedPose.Translation(), fusedPose.Rotation() + frc::Rotation2d(units::angle::degree_t(m_turret.GetRotationAngleDegrees()))};
   (m_field.GetObject)("Turret")->SetPose(turretPose);
+
+  // AdvantageScope 3D Field & Robot CAD telemetry
+  frc::Pose3d robotPose3d{fusedPose};
+  m_robotPose3dPub.Set(robotPose3d);
+
+  // 3D Articulated Component Poses (robot-relative)
+  // Component 0: Turret (azimuth rotation around Z axis)
+  frc::Pose3d turretPose3d{
+      units::length::meter_t(TurretConstants::kTurretOffsetX),
+      units::length::meter_t(TurretConstants::kTurretOffsetY),
+      units::length::meter_t(0.45),
+      frc::Rotation3d(units::angle::degree_t(0.0), units::angle::degree_t(0.0), units::angle::degree_t(m_turret.GetRotationAngleDegrees()))
+  };
+
+  // Component 1: Sliding Intake (moves along X axis)
+  double slideMeters = (slidePos / kSlideOneFootRotations) * 0.3048;
+  frc::Pose3d slidePose3d{
+      units::length::meter_t(slideMeters),
+      units::length::meter_t(0.0),
+      units::length::meter_t(0.15),
+      frc::Rotation3d{}
+  };
+
+  m_componentPosesPub.Set(std::array<frc::Pose3d, 2>{turretPose3d, slidePose3d});
 }
 
 void Robot::AutonomousInit() {
