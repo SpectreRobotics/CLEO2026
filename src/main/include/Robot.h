@@ -7,6 +7,7 @@
 #include <string>
 #include <frc/TimedRobot.h>
 #include <frc/XboxController.h>
+#include <frc/PS5Controller.h>
 #include <frc/Timer.h>
 #include <frc/DataLogManager.h>
 #include <frc/DriverStation.h>
@@ -46,6 +47,17 @@ class Robot : public frc::TimedRobot {
   void SimulationPeriodic() override;
   void Intake();
 
+  // ========== Unified Driver Controller Helpers (Xbox & PS5 DualSense) ==========
+  bool IsPS5() const;
+  double GetDriverLeftX() const;
+  double GetDriverLeftY() const;
+  double GetDriverRightX() const;
+  double GetDriverLeftTrigger() const;
+  double GetDriverRightTrigger() const;
+  bool GetDriverRightBumperPressed();
+  bool GetDriverResetGyroPressed();
+  int GetDriverPOV() const;
+
  private:
   frc::SendableChooser<std::string> m_chooser;
   const std::string kAutoNameDefault = "Default";
@@ -62,7 +74,10 @@ class Robot : public frc::TimedRobot {
   static constexpr double kSlideSpeed = 0.4;
   static constexpr double kSlideOneFootRotations = 15.0; // Adjust for 1 foot of travel based on mechanism gearing
 
-  frc::XboxController m_controller{0};
+  // ========== Driver Controllers (Xbox & PS5 DualSense on Port 0) ==========
+  frc::XboxController m_xboxController{0};
+  frc::PS5Controller m_ps5Controller{0};
+  frc::SendableChooser<std::string> m_controllerChooser;
   frc::Timer m_timer;
 
   bool m_intakeOut = false;

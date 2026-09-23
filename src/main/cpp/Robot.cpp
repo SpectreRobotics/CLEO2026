@@ -43,6 +43,12 @@ Robot::Robot() {
   m_teamColorChooser.AddOption("Red", "Red");
   frc::SmartDashboard::PutData("Team Color", &m_teamColorChooser);
 
+  // Controller type chooser - AutoDetect, PS5, or Xbox
+  m_controllerChooser.SetDefaultOption("AutoDetect", "AutoDetect");
+  m_controllerChooser.AddOption("PS5", "PS5");
+  m_controllerChooser.AddOption("Xbox", "Xbox");
+  frc::SmartDashboard::PutData("Controller Type", &m_controllerChooser);
+
   // Pump mode toggle - when ON, intake oscillates forward/back during shooting
   frc::SmartDashboard::PutBoolean("Intake/PumpMode", false);
 
@@ -65,12 +71,13 @@ void Robot::Intake() {
 }
 
 void Robot::RobotPeriodic() {
-  // Back button (button 7) resets gyro heading
-  if (m_controller.GetBackButtonPressed()) {
+  // Reset gyro heading: Back button (Xbox) or Create / Touchpad (PS5)
+  if (GetDriverResetGyroPressed()) {
     m_pigeon.Reset();
   }
   GyroValue = -std::fmod(m_pigeon.GetYaw().GetValueAsDouble(), 360.0);
   frc::SmartDashboard::PutNumber("Gyro Heading", GyroValue);
+  frc::SmartDashboard::PutString("Controller/ActiveType", IsPS5() ? "PS5 DualSense" : "Xbox");
 
   double slidePos = m_slideMotor.GetPosition().GetValueAsDouble();
   frc::SmartDashboard::PutNumber("Slide Position Rot", slidePos);
@@ -121,15 +128,15 @@ void Robot::TeleopInit() {
 void Robot::TeleopPeriodic() {
   using namespace units::literals;
 
-  // ========== Swerve Driving ==========
-  float rawx = m_controller.GetLeftX();
-  float rawy = m_controller.GetLeftY();
-  float rawx2 = m_controller.GetRightX();
+  // ========== Swerve Driving (Xbox or PS5) ==========
+  float rawx = GetDriverLeftX();
+  float rawy = GetDriverLeftY();
+  float rawx2 = GetDriverRightX();
 
-  triggerL = m_controller.GetLeftTriggerAxis();
-  triggerR = m_controller.GetRightTriggerAxis();
+  triggerL = GetDriverLeftTrigger();
+  triggerR = GetDriverRightTrigger();
 
-  // Apply deadzones (forward on Xbox stick is negative Y, so invert rawy)
+  // Apply deadzones (forward on controller stick is negative Y, so invert rawy)
   x = (std::abs(rawx) >= DrivetrainConstants::xdeadz) ? rawx : 0.0;
   y = (std::abs(rawy) >= DrivetrainConstants::ydeadz) ? -rawy : 0.0;
   x2 = (std::abs(rawx2) >= DrivetrainConstants::x2deadz) ? rawx2 : 0.0;
@@ -140,11 +147,11 @@ void Robot::TeleopPeriodic() {
 
   // ========== Slide & Intake Controls ==========
   double slidePos = m_slideMotor.GetPosition().GetValueAsDouble();
-  int pov = m_controller.GetPOV();
+  int pov = GetDriverPOV();
   bool isShooting = triggerL > 0.15;
 
-  // Right bumper toggles intake in/out
-  if (m_controller.GetRightBumperButtonPressed()) {
+  // Right bumper (RB on Xbox / R1 on PS5) toggles intake in/out
+  if (GetDriverRightBumperPressed()) {
     m_intakeOut = !m_intakeOut;
   }
 
@@ -242,6 +249,69 @@ void Robot::SimulationPeriodic() {
 
   // Step turret simulation physics
   m_turret.UpdateSim(20_ms);
+}
+
+// ========== Unified Driver Controller Helpers (Xbox & PS5 DualSense) ==========
+
+bool Robot::IsPS5() const {
+  std::string choice = m_controllerChooser.GetSelected();
+  if (choice == "PS5") return true;
+  if (choice == "Xbox") return false;
+
+  // AutoDetect: Check DriverStation joystick name and Xbox flag
+  if (!frc::DriverStation::IsJoystickConnected(0)) return false;
+  if (frc::DriverStation::GetJoystickIsXbox(0)) return false;
+
+  std::string name = frc::DriverStation::GetJoystickName(0);
+  if (name.find("PS5") != std::string::npos ||
+      name.find("DualSense") != std::string::npos ||
+      name.find("Wireless Controller") != std::string::npos ||
+      name.find("Sony") != std::string::npos ||
+      name.find("PlayStation") != std::string::npos) {
+    return true;
+  }
+
+  // PS5 DualSense reports > 10 buttons (typically 14-16) vs Xbox 10
+  if (frc::DriverStation::GetStickButtonCount(0) > 10) {
+    return true;
+  }
+
+  return false;
+}
+
+double Robot::GetDriverLeftX() const {
+  return IsPS5() ? m_ps5Controller.GetLeftX() : m_xboxController.GetLeftX();
+}
+
+double Robot::GetDriverLeftY() const {
+  return IsPS5() ? m_ps5Controller.GetLeftY() : m_xboxController.GetLeftY();
+}
+
+double Robot::GetDriverRightX() const {
+  return IsPS5() ? m_ps5Controller.GetRightX() : m_xboxController.GetRightX();
+}
+
+double Robot::GetDriverLeftTrigger() const {
+  return IsPS5() ? m_ps5Controller.GetL2Axis() : m_xboxController.GetLeftTriggerAxis();
+}
+
+double Robot::GetDriverRightTrigger() const {
+  return IsPS5() ? m_ps5Controller.GetR2Axis() : m_xboxController.GetRightTriggerAxis();
+}
+
+bool Robot::GetDriverRightBumperPressed() {
+  return IsPS5() ? m_ps5Controller.GetR1ButtonPressed() : m_xboxController.GetRightBumperButtonPressed();
+}
+
+bool Robot::GetDriverResetGyroPressed() {
+  if (IsPS5()) {
+    return m_ps5Controller.GetCreateButtonPressed() || m_ps5Controller.GetTouchpadButtonPressed();
+  }
+  return m_xboxController.GetBackButtonPressed();
+}
+
+int Robot::GetDriverPOV() const {
+  return IsPS5() ? m_ps5Controller.GetPOV() : m_xboxController.GetPOV();
 }
 
 #ifndef RUNNING_FRC_TESTS
