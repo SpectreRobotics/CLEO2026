@@ -1,0 +1,14 @@
+{
+  "name": "CLEO 2026",
+  "disableSimplification": false,
+  "components": [
+    {
+      "zeroedPosition": [0.0, 0.0, 0.45],
+      "zeroedRotations": []
+    },
+    {
+      "zeroedPosition": [0.0, 0.0, 0.15],
+      "zeroedRotations": []
+    }
+  ]
+}
