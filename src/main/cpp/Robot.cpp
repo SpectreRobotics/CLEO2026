@@ -110,9 +110,9 @@ void Robot::TeleopPeriodic() {
   using namespace units::literals;
 
   // ========== Swerve Driving (Xbox or PS5) ==========
-  float rawx = GetDriverLeftX();
-  float rawy = GetDriverLeftY();
-  float rawx2 = GetDriverRightX();
+  double rawx = GetDriverLeftX();
+  double rawy = GetDriverLeftY();
+  double rawx2 = GetDriverRightX();
 
   triggerL = GetDriverLeftTrigger();
   triggerR = GetDriverRightTrigger();

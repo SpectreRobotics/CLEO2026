@@ -219,10 +219,10 @@ class Turret {
   void Periodic();
 
  private:
-  // Hardware Motors
-  ctre::phoenix6::hardware::TalonFX m_rotationMotor{TurretConstants::kRotationMotorId};
-  ctre::phoenix6::hardware::TalonFX m_flywheelLeft{TurretConstants::kShooterLeftMotorId};
-  ctre::phoenix6::hardware::TalonFX m_flywheelRight{TurretConstants::kShooterRightMotorId};
+  // Hardware Motors (CANivore Bus: outtake)
+  ctre::phoenix6::hardware::TalonFX m_rotationMotor{TurretConstants::kRotationMotorId, ctre::phoenix6::CANBus{"outtake"}};
+  ctre::phoenix6::hardware::TalonFX m_flywheelLeft{TurretConstants::kShooterLeftMotorId, ctre::phoenix6::CANBus{"outtake"}};
+  ctre::phoenix6::hardware::TalonFX m_flywheelRight{TurretConstants::kShooterRightMotorId, ctre::phoenix6::CANBus{"outtake"}};
 
   // REV ServoHub & Hood Servos
   rev::servohub::ServoHub m_servoHub{TurretConstants::kServoHubId};

@@ -57,11 +57,11 @@ class Robot : public frc::TimedRobot {
   const std::string kAutoNameCustom = "My Auto";
   std::string m_autoSelected;
 
-  // ========== Intake & Slide Mechanisms ==========
-  ctre::phoenix6::hardware::TalonFX m_slideMotor{1};   // Kraken X44 sliding intake motor
-  ctre::phoenix6::hardware::TalonFX m_IntakeMotor{2};  // Kraken X60 intake roller motor
-  ctre::phoenix6::hardware::TalonFX m_indexer{3};
-  ctre::phoenix6::hardware::TalonFX m_feeder{4};
+  // ========== Intake & Slide Mechanisms (CANivore Bus: intake) ==========
+  ctre::phoenix6::hardware::TalonFX m_slideMotor{1, ctre::phoenix6::CANBus{"intake"}};   // Kraken X44 sliding intake motor
+  ctre::phoenix6::hardware::TalonFX m_IntakeMotor{2, ctre::phoenix6::CANBus{"intake"}};  // Kraken X60 intake roller motor
+  ctre::phoenix6::hardware::TalonFX m_indexer{3, ctre::phoenix6::CANBus{"intake"}};
+  ctre::phoenix6::hardware::TalonFX m_feeder{4, ctre::phoenix6::CANBus{"intake"}};
 
   static constexpr double kIntakeSpeed = 0.8;
   static constexpr double kSlideSpeed = 0.4;
@@ -84,8 +84,8 @@ class Robot : public frc::TimedRobot {
   double x = 0.0;
   double y = 0.0;
   double x2 = 0.0;
-  float triggerL = 0.0f;
-  float triggerR = 0.0f;
+  double triggerL = 0.0;
+  double triggerR = 0.0;
   bool FieldCentric = true;
 
   frc::SendableChooser<std::string> m_driveModeChooser;
