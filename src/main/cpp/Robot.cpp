@@ -61,23 +61,6 @@ Robot::Robot() {
 
   // Pump mode toggle - when ON, intake oscillates forward/back during shooting
   frc::SmartDashboard::PutBoolean("Intake/PumpMode", false);
-
-  // ========== AdvantageScope Data Logging & Telemetry ==========
-  // Start on-robot .wpilog recording to USB / /home/lvuser/logs/
-  frc::DataLogManager::Start();
-  frc::DriverStation::StartDataLog(frc::DataLogManager::GetLog());
-
-  // AdvantageScope & Dashboard 2D Field
-  frc::SmartDashboard::PutData("Field", &m_field);
-
-  // AdvantageScope NT4 struct publishers (Odometry and Swerve tabs)
-  auto inst = nt::NetworkTableInstance::GetDefault();
-  m_posePub = inst.GetTable("SmartDashboard")->GetStructTopic<frc::Pose2d>("RobotPose").Publish();
-  m_moduleStatesPub = inst.GetTable("SmartDashboard")->GetStructArrayTopic<frc::SwerveModuleState>("SwerveStates").Publish();
-
-  // AdvantageScope 3D Field & CAD Robot model publishers
-  m_robotPose3dPub = inst.GetTable("SmartDashboard")->GetStructTopic<frc::Pose3d>("RobotPose3d").Publish();
-  m_componentPosesPub = inst.GetTable("SmartDashboard")->GetStructArrayTopic<frc::Pose3d>("ComponentPoses").Publish();
 }
 
 void Robot::Intake() {
@@ -100,50 +83,9 @@ void Robot::RobotPeriodic() {
   // Periodic turret telemetry
   m_turret.Periodic();
 
-  // Update dual Limelight vision-fused odometry (runs at all times)
-  m_swerve.UpdateVision(GyroValue);
-
-  // Display fused odometry on SmartDashboard
-  frc::Pose2d fusedPose = m_swerve.GetFieldPose();
+  // Display odometry on SmartDashboard
   frc::SmartDashboard::PutNumber("Odometry/FusedX", m_swerve.positionFWDField.value());
   frc::SmartDashboard::PutNumber("Odometry/FusedY", m_swerve.positionSTRField.value());
-
-  // AdvantageScope 2D Field & NT4 struct telemetry
-  m_field.SetRobotPose(fusedPose);
-  m_posePub.Set(fusedPose);
-  m_moduleStatesPub.Set(m_swerve.GetModuleStates());
-
-  // Show Hub Target and Turret Direction on AdvantageScope 2D Field
-  double targetX = (m_teamColorChooser.GetSelected() == "Red") ? TurretConstants::kRedHubX : TurretConstants::kBlueHubX;
-  double targetY = (m_teamColorChooser.GetSelected() == "Red") ? TurretConstants::kRedHubY : TurretConstants::kBlueHubY;
-  (m_field.GetObject)("HubTarget")->SetPose(frc::Pose2d(units::length::meter_t(targetX), units::length::meter_t(targetY), frc::Rotation2d{}));
-
-  frc::Pose2d turretPose{fusedPose.Translation(), fusedPose.Rotation() + frc::Rotation2d(units::angle::degree_t(m_turret.GetRotationAngleDegrees()))};
-  (m_field.GetObject)("Turret")->SetPose(turretPose);
-
-  // AdvantageScope 3D Field & Robot CAD telemetry
-  frc::Pose3d robotPose3d{fusedPose};
-  m_robotPose3dPub.Set(robotPose3d);
-
-  // 3D Articulated Component Poses (robot-relative)
-  // Component 0: Turret (azimuth rotation around Z axis)
-  frc::Pose3d turretPose3d{
-      units::length::meter_t(TurretConstants::kTurretOffsetX),
-      units::length::meter_t(TurretConstants::kTurretOffsetY),
-      units::length::meter_t(0.45),
-      frc::Rotation3d(units::angle::degree_t(0.0), units::angle::degree_t(0.0), units::angle::degree_t(m_turret.GetRotationAngleDegrees()))
-  };
-
-  // Component 1: Sliding Intake (moves along X axis)
-  double slideMeters = (slidePos / kSlideOneFootRotations) * 0.3048;
-  frc::Pose3d slidePose3d{
-      units::length::meter_t(slideMeters),
-      units::length::meter_t(0.0),
-      units::length::meter_t(0.15),
-      frc::Rotation3d{}
-  };
-
-  m_componentPosesPub.Set(std::array<frc::Pose3d, 2>{turretPose3d, slidePose3d});
 }
 
 void Robot::AutonomousInit() {
@@ -268,9 +210,13 @@ void Robot::TeleopPeriodic() {
   frc::SmartDashboard::PutNumber("Turret/DistToHub", m_turret.GetTargetDistanceMeters());
 }
 
-void Robot::DisabledInit() {}
+void Robot::DisabledInit() {
+  m_swerve.DisabledInit();
+}
 
-void Robot::DisabledPeriodic() {}
+void Robot::DisabledPeriodic() {
+  m_swerve.DisabledPeriodic();
+}
 
 void Robot::TestInit() {}
 

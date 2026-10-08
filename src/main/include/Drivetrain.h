@@ -1,202 +1,146 @@
 // ============================================================================
-// FRC Team 8753 - 2026 Swerve Drivetrain
+// FRC Team 8753 - 2026 Swerve Drivetrain Header
 // ============================================================================
-// Implements a 4-module swerve drive system with field-centric control,
-// wheel odometry, and dual Limelight (Left/Right) vision positioning.
+// Complete ground-up implementation based 1:1 on ChimiSwerve (Team 1684) White Paper.
+// Hardware: 4x MK3.5 Swerve Modules with Kraken X60 (TalonFX) & CTRE CANcoders.
+// All swerve drive motors, steer motors, CANcoders, and Pigeon2 run on roboRIO CAN bus.
 // ============================================================================
 
 #pragma once
 
-// WPILib includes
 #include <frc/Timer.h>
 #include <frc/geometry/Pose2d.h>
 #include <frc/geometry/Rotation2d.h>
-#include <frc/DriverStation.h>
-#include <frc/kinematics/ChassisSpeeds.h>
-#include <frc/kinematics/SwerveModuleState.h>
-#include <array>
+#include <frc/smartdashboard/SmartDashboard.h>
 
-// NetworkTables includes
-#include <networktables/NetworkTable.h>
-#include <networktables/NetworkTableInstance.h>
-#include <networktables/NetworkTableEntry.h>
-#include <networktables/NetworkTableValue.h>
-
-// CTRE Phoenix 6 includes
-#include <ctre/phoenix6/Pigeon2.hpp>
 #include <ctre/phoenix6/TalonFX.hpp>
 #include <ctre/phoenix6/CANcoder.hpp>
+#include <ctre/phoenix6/controls/PositionDutyCycle.hpp>
 
-// Standard library
 #include <cmath>
-#include <vector>
 #include <algorithm>
 #include "DrivetrainConstants.h"
-#include "LimelightHelpers.h"
 
 #ifndef DRIVETRAIN_H
 #define DRIVETRAIN_H
 
-/**
- * @brief Swerve drivetrain class with 4 independent modules and dual Limelight localization
- *
- * Each module consists of:
- * - 1x Kraken TalonFX drive motor
- * - 1x Kraken TalonFX steering motor
- * - 1x CANcoder absolute encoder (fused with steering motor)
- */
 class Drivetrain {
-    public:
-        // ========== Lifecycle Methods ==========
-        /**
-         * @brief Constructor - initializes drivetrain
-         */
-        Drivetrain();
+ public:
+  Drivetrain();
 
-        /**
-         * @brief Applies motor configurations (PID, ramp rates, sensor fusion)
-         */
-        void ConfigureMotors();
+  /**
+   * @brief Configure all Kraken drive and steer TalonFX controllers and CANcoder fusion
+   */
+  void ConfigureMotors();
 
-        // ========== Control Methods ==========
-        /**
-         * @brief Main swerve drive update - calculates module states and applies commands
-         * @param x Strafe input (left/right, -1.0 to 1.0)
-         * @param y Forward input (forward/back, -1.0 to 1.0)
-         * @param x2 Rotation input (-1.0 to 1.0)
-         * @param GyroValue Current heading in degrees
-         * @param triggerL Left trigger value (brake/slow mode)
-         * @param triggerR Right trigger value (boost mode)
-         * @param FieldCentric true for field-centric, false for robot-centric
-         */
-        void Update(double x, double y, double x2, double GyroValue,
-                    double triggerL, double triggerR, bool FieldCentric);
+  /**
+   * @brief Called in DisabledInit to stop drive motors
+   */
+  void DisabledInit();
 
-        /**
-         * @brief Optimizes swerve module rotation to minimize travel
-         * @param targetAngleRad Desired wheel angle (radians)
-         * @param currentAngleRad Current wheel angle (radians)
-         * @param speedPercent Reference to speed - reversed if wheel flips
-         * @return Optimized target angle (radians)
-         */
-        double MinimizeRotation(double targetAngleRad, double currentAngleRad, double& speedPercent);
+  /**
+   * @brief Called in DisabledPeriodic to track live wheel positions and publish telemetry
+   */
+  void DisabledPeriodic();
 
-        /**
-         * @brief Wraps angle error to -PI to PI range
-         * @param targetAngle Target angle (radians)
-         * @param currentAngle Current angle (radians)
-         * @return Wrapped error (-PI to PI)
-         */
-        double WrapError(double targetAngle, double currentAngle);
+  /**
+   * @brief Main teleop/auton swerve update function (ChimiSwerve Sections 2.1b & 2.3d)
+   * @param x Strafe joystick input [-1, 1]
+   * @param y Forward joystick input [-1, 1]
+   * @param x2 Rotation joystick input [-1, 1]
+   * @param GyroValue Current gyro heading in degrees (clockwise positive)
+   * @param triggerL Left trigger modifier (slowdown)
+   * @param triggerR Right trigger modifier (boost)
+   * @param FieldCentric True for field-centric, false for robot-centric
+   */
+  void Update(double x, double y, double x2, double GyroValue,
+              double triggerL, double triggerR, bool FieldCentric);
 
-        /**
-         * @brief Updates robot field position using wheel odometry
-         * @param angleFL Front-left wheel angle (radians)
-         * @param angleFR Front-right wheel angle (radians)
-         * @param angleBL Back-left wheel angle (radians)
-         * @param angleBR Back-right wheel angle (radians)
-         * @param wheelSpeedFL Front-left wheel velocity (m/s)
-         * @param wheelSpeedFR Front-right wheel velocity (m/s)
-         * @param wheelSpeedBL Back-left wheel velocity (m/s)
-         * @param wheelSpeedBR Back-right wheel velocity (m/s)
-         * @param GyroValue Current gyro heading (degrees)
-         */
-        void odometryUpdate(double angleFL, double angleFR, double angleBL, double angleBR,
-                            double wheelSpeedFL, double wheelSpeedFR, double wheelSpeedBL,
-                            double wheelSpeedBR, double GyroValue);
+  /**
+   * @brief ChimiSwerve Inversion Awareness & Azimuth Optimization (Pages 15-16)
+   * Calculates continuous turn setpoint within +/- 0.25 turns (+/- 90 deg) of current position.
+   * Negates wheel speed if target is >90 deg away.
+   * @param waRad Target azimuth angle in radians from inverse kinematics [-pi, pi]
+   * @param currentTurns Current steering motor position in turns (unbounded)
+   * @param ws Reference to wheel speed (negated if flipped)
+   * @return Continuous setpoint in turns for Phoenix 6 PositionDutyCycle
+   */
+  double ChimiOptimizeAzimuth(double waRad, double currentTurns, double& ws);
 
-        // ========== Dual Limelight Vision Localization ==========
-        /**
-         * @brief Updates robot field position using dual Limelights (Left & Right)
-         *        Uses MegaTag2 orientation-assisted AprilTag localization and blends with wheel odometry.
-         * @param GyroValue Current gyro heading in degrees
-         */
-        void UpdateVision(double GyroValue);
+  /**
+   * @brief ChimiSwerve Forward Kinematics & Odometry (Section 2.2b, Pages 17-19)
+   */
+  void odometryUpdate(double waFL, double waFR, double waBL, double waBR,
+                      double wsFL, double wsFR, double wsBL, double wsBR,
+                      double GyroValue);
 
-        /**
-         * @brief Explicitly resets/sets the robot field pose coordinates (meters)
-         */
-        void SetPose(units::length::meter_t x, units::length::meter_t y);
+  /**
+   * @brief Simulation physics update for desktop simulation
+   */
+  void UpdateSim(units::time::second_t dt);
 
-        /**
-         * @brief Gets current fused robot field pose
-         */
-        frc::Pose2d GetFieldPose() const;
+  /**
+   * @brief Returns current 2D field pose
+   */
+  frc::Pose2d GetFieldPose() const {
+    return frc::Pose2d(frc::Translation2d(positionFWDField, positionSTRField), ROTField);
+  }
 
-        /**
-         * @brief Gets current swerve module states (FL, FR, BL, BR) for AdvantageScope telemetry
-         */
-        std::array<frc::SwerveModuleState, 4> GetModuleStates() const;
+  // ========== Odometry State (Accessible by Robot.cpp) ==========
+  units::length::meter_t positionFWDField{0};  ///< Forward distance on field (meters)
+  units::length::meter_t positionSTRField{0};  ///< Strafe distance on field (meters)
+  frc::Rotation2d ROTField{units::angle::radian_t(0)}; ///< Field heading
+  double odoSTR = 0.0;                         ///< Robot strafe velocity (m/s)
+  double odoFWD = 0.0;                         ///< Robot forward velocity (m/s)
 
-        /**
-         * @brief Updates physics simulation for swerve drive and steer motors
-         * @param dt Timestep duration
-         */
-        void UpdateSim(units::time::second_t dt);
+  double odoDeltaTime = 0.0;
+  units::time::second_t odoLastTime{0};
 
-        // ========== Odometry & Vision State (Public for access from Robot & Turret) ==========
-        units::length::meter_t positionFWDField = units::length::meter_t(0);  ///< Forward position (meters)
-        units::length::meter_t positionSTRField = units::length::meter_t(0);  ///< Strafe position (meters)
-        frc::Rotation2d ROTField = frc::Rotation2d(units::radian_t(0));       ///< Field heading (radians)
-        double odoSTR = 0;                                                    ///< Strafe velocity (m/s)
-        double odoFWD = 0;                                                    ///< Forward velocity (m/s)
+  // ========== Hardware: Drive Motors (Kraken TalonFX) ==========
+  // CAN IDs: FL=30, FR=20, BL=40, BR=10 (Native roboRIO CAN bus)
+  ctre::phoenix6::hardware::TalonFX m_FL_Drive{30};  // Module 3
+  ctre::phoenix6::hardware::TalonFX m_FR_Drive{20};  // Module 2
+  ctre::phoenix6::hardware::TalonFX m_BL_Drive{40};  // Module 4
+  ctre::phoenix6::hardware::TalonFX m_BR_Drive{10};  // Module 1
 
-        // Vision tracking telemetry flags
-        bool m_hasInitialVisionPose = false;
-        bool m_visionTargetSeen = false;
-        int m_lastVisionTagCount = 0;
+  // ========== Hardware: Steer Motors (Kraken TalonFX) ==========
+  // CAN IDs: FL=31, FR=21, BL=41, BR=11 (Native roboRIO CAN bus)
+  ctre::phoenix6::hardware::TalonFX m_FL_Steer{31};  // Module 3
+  ctre::phoenix6::hardware::TalonFX m_FR_Steer{21};  // Module 2
+  ctre::phoenix6::hardware::TalonFX m_BL_Steer{41};  // Module 4
+  ctre::phoenix6::hardware::TalonFX m_BR_Steer{11};  // Module 1
 
-        // ========== Odometry Timing ==========
-        double odoDeltaTime = 0;                                              ///< Delta time for odometry (seconds)
-        units::time::second_t odoLastTime = units::time::second_t(0);         ///< Last odometry update timestamp
+ private:
+  // ========== Hardware: Absolute CANcoders ==========
+  // CAN IDs: FL=32, FR=22, BL=42, BR=12 (Native roboRIO CAN bus)
+  ctre::phoenix6::hardware::CANcoder CANcoderFL{32};  // Module 3
+  ctre::phoenix6::hardware::CANcoder CANcoderFR{22};  // Module 2
+  ctre::phoenix6::hardware::CANcoder CANcoderBL{42};  // Module 4
+  ctre::phoenix6::hardware::CANcoder CANcoderBR{12};  // Module 1
 
-        // ========== Hardware - Drive Motors ==========
-        ctre::phoenix6::hardware::TalonFX m_FL_Drive{30};  ///< Front-left drive (ID 30, module 3)
-        ctre::phoenix6::hardware::TalonFX m_FR_Drive{20};  ///< Front-right drive (ID 20, module 2)
-        ctre::phoenix6::hardware::TalonFX m_BL_Drive{40};  ///< Back-left drive (ID 40, module 4)
-        ctre::phoenix6::hardware::TalonFX m_BR_Drive{10};  ///< Back-right drive (ID 10, module 1)
+  // ========== Motor Configurations ==========
+  ctre::phoenix6::configs::TalonFXConfiguration driveConfigFL{};
+  ctre::phoenix6::configs::TalonFXConfiguration driveConfigFR{};
+  ctre::phoenix6::configs::TalonFXConfiguration driveConfigBL{};
+  ctre::phoenix6::configs::TalonFXConfiguration driveConfigBR{};
+  ctre::phoenix6::configs::TalonFXConfiguration steerConfigFL{};
+  ctre::phoenix6::configs::TalonFXConfiguration steerConfigFR{};
+  ctre::phoenix6::configs::TalonFXConfiguration steerConfigBL{};
+  ctre::phoenix6::configs::TalonFXConfiguration steerConfigBR{};
+  ctre::phoenix6::configs::Slot0Configs steerSlot0{};
 
-        // ========== Hardware - Steering Motors ==========
-        ctre::phoenix6::hardware::TalonFX m_FL_Steer{31};  ///< Front-left steer (ID 31, module 3)
-        ctre::phoenix6::hardware::TalonFX m_FR_Steer{21};  ///< Front-right steer (ID 21, module 2)
-        ctre::phoenix6::hardware::TalonFX m_BL_Steer{41};  ///< Back-left steer (ID 41, module 4)
-        ctre::phoenix6::hardware::TalonFX m_BR_Steer{11};  ///< Back-right steer (ID 11, module 1)
+  ctre::phoenix6::controls::PositionDutyCycle steerRequest{0_tr};
 
-    private:
-        // ========== Hardware - Absolute Encoders ==========
-        ctre::phoenix6::hardware::CANcoder CANcoderFL{32};  ///< Front-left CANcoder (ID 32, module 3)
-        ctre::phoenix6::hardware::CANcoder CANcoderFR{22};  ///< Front-right CANcoder (ID 22, module 2)
-        ctre::phoenix6::hardware::CANcoder CANcoderBL{42};  ///< Back-left CANcoder (ID 42, module 4)
-        ctre::phoenix6::hardware::CANcoder CANcoderBR{12};  ///< Back-right CANcoder (ID 12, module 1)
+  // ========== Module State ==========
+  double lastTargetTurnsFL = 0.0;
+  double lastTargetTurnsFR = 0.0;
+  double lastTargetTurnsBL = 0.0;
+  double lastTargetTurnsBR = 0.0;
 
-        // ========== Motor Configurations ==========
-        ctre::phoenix6::configs::Slot0Configs Posconfig{};              ///< PID config for steering position
-        ctre::phoenix6::configs::TalonFXConfiguration driveConfig{};    ///< Drive motor config (ramp, brake)
-        ctre::phoenix6::configs::TalonFXConfiguration configFL{};       ///< Front-left steer config
-        ctre::phoenix6::configs::TalonFXConfiguration configFR{};       ///< Front-right steer config
-        ctre::phoenix6::configs::TalonFXConfiguration configBL{};       ///< Back-left steer config
-        ctre::phoenix6::configs::TalonFXConfiguration configBR{};       ///< Back-right steer config
-        ctre::phoenix6::configs::CANcoderConfiguration cc_cfg{};        ///< CANcoder config (unused)
+  double storedYaw = 0.0;  ///< ChimiSwerve Section 2.3d stored heading
+  bool hasBootstrapped = false;
 
-        // ========== Swerve Module State ==========
-        double tempangleFL = 0, tempangleFR = 0, tempangleBL = 0, tempangleBR = 0;
-        double angleFL = 0, angleFR = 0, angleBL = 0, angleBR = 0;
-        double speedFL = 0, speedFR = 0, speedBL = 0, speedBR = 0;
-
-        // ========== Timing ==========
-        units::time::second_t lastTime = units::time::second_t(0);
-
-        // ========== Joystick Inputs (after field-centric transform) ==========
-        double ROT = 0;
-        double FWD = 0;
-        double STR = 0;
-        double targetAngle = 0;
-        double m_headingIError = 0.0;
-        double m_headingLastError = 0.0;
-
-        // ========== Wheel Velocities ==========
-        double wheelSpeedFL = 0, wheelSpeedFR = 0, wheelSpeedBL = 0, wheelSpeedBR = 0;
-        double angularSpeedFL = 0, angularSpeedFR = 0, angularSpeedBL = 0, angularSpeedBR = 0;
+  units::time::second_t lastTime{0};
 };
 
 #endif  // DRIVETRAIN_H

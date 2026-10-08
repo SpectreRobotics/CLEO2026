@@ -9,19 +9,10 @@
 #include <frc/XboxController.h>
 #include <frc/PS5Controller.h>
 #include <frc/Timer.h>
-#include <frc/DataLogManager.h>
 #include <frc/DriverStation.h>
-#include <frc/smartdashboard/Field2d.h>
+#include <frc/smartdashboard/SmartDashboard.h>
 #include <frc/smartdashboard/SendableChooser.h>
 #include <frc/geometry/Pose2d.h>
-#include <frc/geometry/struct/Pose2dStruct.h>
-#include <frc/geometry/Pose3d.h>
-#include <frc/geometry/struct/Pose3dStruct.h>
-#include <frc/kinematics/SwerveModuleState.h>
-#include <frc/kinematics/struct/SwerveModuleStateStruct.h>
-#include <networktables/NetworkTableInstance.h>
-#include <networktables/StructTopic.h>
-#include <networktables/StructArrayTopic.h>
 
 #include <ctre/phoenix6/Pigeon2.hpp>
 #include <ctre/phoenix6/TalonFX.hpp>
@@ -104,11 +95,4 @@ class Robot : public frc::TimedRobot {
 
   // ========== Team Color Chooser ==========
   frc::SendableChooser<std::string> m_teamColorChooser;
-
-  // ========== AdvantageScope & Dashboard Telemetry ==========
-  frc::Field2d m_field;
-  nt::StructPublisher<frc::Pose2d> m_posePub;
-  nt::StructArrayPublisher<frc::SwerveModuleState> m_moduleStatesPub;
-  nt::StructPublisher<frc::Pose3d> m_robotPose3dPub;
-  nt::StructArrayPublisher<frc::Pose3d> m_componentPosesPub;
 };
