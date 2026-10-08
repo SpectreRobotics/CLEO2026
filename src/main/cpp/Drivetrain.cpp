@@ -31,64 +31,56 @@ void Drivetrain::ConfigureMotors() {
       units::time::second_t(DrivetrainConstants::DriveRampRateSeconds);
   driveConfig.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
 
-  m_FL_Drive.GetConfigurator().Apply(driveConfig);
-  m_FR_Drive.GetConfigurator().Apply(driveConfig);
-  m_BL_Drive.GetConfigurator().Apply(driveConfig);
-  m_BR_Drive.GetConfigurator().Apply(driveConfig);
+  // Steer Krakens configurations // fusing CANcoder to Krakens encoder for high accuracy
+  auto setupSteerConfig = [this](ctre::phoenix6::configs::TalonFXConfiguration& cfg, int canCoderId) {
+    cfg.Feedback.FeedbackRemoteSensorID = canCoderId;
+    cfg.Feedback.FeedbackSensorSource =
+        ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
+    cfg.Feedback.SensorToMechanismRatio = DrivetrainConstants::sensorToMechanismRatio;
+    cfg.Feedback.RotorToSensorRatio = DrivetrainConstants::rotorToSensorRatio;
+    cfg.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod =
+        units::time::second_t(DrivetrainConstants::SteeringRampRateSeconds);
+    cfg.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
+    cfg.ClosedLoopGeneral.ContinuousWrap = true;
+    cfg.MotorOutput.Inverted = ctre::phoenix6::signals::InvertedValue::CounterClockwise_Positive;
+    cfg.Slot0.kP = DrivetrainConstants::ModuleP;
+    cfg.Slot0.kI = DrivetrainConstants::ModuleI;
+    cfg.Slot0.kD = DrivetrainConstants::ModuleD;
+  };
 
-  // Steer Krakens configurations // also fusing CANcoder to Krakens encoder for higher accuracy
-  configFL.Feedback.FeedbackRemoteSensorID = CANcoderFL.GetDeviceID();
-  configFL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
-  configFL.Feedback.SensorToMechanismRatio = DrivetrainConstants::sensorToMechanismRatio;
-  configFL.Feedback.RotorToSensorRatio = DrivetrainConstants::rotorToSensorRatio;
-  configFL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod =
-      units::time::second_t(DrivetrainConstants::SteeringRampRateSeconds);
-  configFL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  configFL.ClosedLoopGeneral.ContinuousWrap = true;
-  configFL.MotorOutput.Inverted = ctre::phoenix6::signals::InvertedValue::CounterClockwise_Positive;
+  setupSteerConfig(configFL, CANcoderFL.GetDeviceID());
+  setupSteerConfig(configFR, CANcoderFR.GetDeviceID());
+  setupSteerConfig(configBL, CANcoderBL.GetDeviceID());
+  setupSteerConfig(configBR, CANcoderBR.GetDeviceID());
 
-  configFR.Feedback.FeedbackRemoteSensorID = CANcoderFR.GetDeviceID();
-  configFR.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
-  configFR.Feedback.SensorToMechanismRatio = DrivetrainConstants::sensorToMechanismRatio;
-  configFR.Feedback.RotorToSensorRatio = DrivetrainConstants::rotorToSensorRatio;
-  configFR.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod =
-      units::time::second_t(DrivetrainConstants::SteeringRampRateSeconds);
-  configFR.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  configFR.ClosedLoopGeneral.ContinuousWrap = true;
-  configFR.MotorOutput.Inverted = ctre::phoenix6::signals::InvertedValue::CounterClockwise_Positive;
+  auto applyWithRetry = [](ctre::phoenix6::hardware::TalonFX& motor,
+                           const ctre::phoenix6::configs::TalonFXConfiguration& cfg,
+                           const char* name) -> bool {
+    auto status = motor.GetConfigurator().Apply(cfg, 100_ms);
+    for (int attempt = 1; attempt <= 5; ++attempt) {
+      if (status.IsOK()) {
+        frc::SmartDashboard::PutString(std::string("Swerve/Config_") + name, "OK");
+        return true;
+      }
+      status = motor.GetConfigurator().Apply(cfg, 100_ms);
+    }
+    frc::SmartDashboard::PutString(std::string("Swerve/Config_") + name, status.GetName());
+    return false;
+  };
 
-  configBL.Feedback.FeedbackRemoteSensorID = CANcoderBL.GetDeviceID();
-  configBL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
-  configBL.Feedback.SensorToMechanismRatio = DrivetrainConstants::sensorToMechanismRatio;
-  configBL.Feedback.RotorToSensorRatio = DrivetrainConstants::rotorToSensorRatio;
-  configBL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod =
-      units::time::second_t(DrivetrainConstants::SteeringRampRateSeconds);
-  configBL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  configBL.ClosedLoopGeneral.ContinuousWrap = true;
-  configBL.MotorOutput.Inverted = ctre::phoenix6::signals::InvertedValue::CounterClockwise_Positive;
+  bool ok = true;
+  ok &= applyWithRetry(m_FL_Drive, driveConfig, "FL_Drive");
+  ok &= applyWithRetry(m_FR_Drive, driveConfig, "FR_Drive");
+  ok &= applyWithRetry(m_BL_Drive, driveConfig, "BL_Drive");
+  ok &= applyWithRetry(m_BR_Drive, driveConfig, "BR_Drive");
 
-  configBR.Feedback.FeedbackRemoteSensorID = CANcoderBR.GetDeviceID();
-  configBR.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
-  configBR.Feedback.SensorToMechanismRatio = DrivetrainConstants::sensorToMechanismRatio;
-  configBR.Feedback.RotorToSensorRatio = DrivetrainConstants::rotorToSensorRatio;
-  configBR.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod =
-      units::time::second_t(DrivetrainConstants::SteeringRampRateSeconds);
-  configBR.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  configBR.ClosedLoopGeneral.ContinuousWrap = true;
-  configBR.MotorOutput.Inverted = ctre::phoenix6::signals::InvertedValue::CounterClockwise_Positive;
+  ok &= applyWithRetry(m_FL_Steer, configFL, "FL_Steer");
+  ok &= applyWithRetry(m_FR_Steer, configFR, "FR_Steer");
+  ok &= applyWithRetry(m_BL_Steer, configBL, "BL_Steer");
+  ok &= applyWithRetry(m_BR_Steer, configBR, "BR_Steer");
 
-  Posconfig.kP = DrivetrainConstants::ModuleP;
-  Posconfig.kI = DrivetrainConstants::ModuleI;
-  Posconfig.kD = DrivetrainConstants::ModuleD;
-
-  m_FL_Steer.GetConfigurator().Apply(configFL);
-  m_FL_Steer.GetConfigurator().Apply(Posconfig);
-  m_FR_Steer.GetConfigurator().Apply(configFR);
-  m_FR_Steer.GetConfigurator().Apply(Posconfig);
-  m_BL_Steer.GetConfigurator().Apply(configBL);
-  m_BL_Steer.GetConfigurator().Apply(Posconfig);
-  m_BR_Steer.GetConfigurator().Apply(configBR);
-  m_BR_Steer.GetConfigurator().Apply(Posconfig);
+  m_configsApplied = ok;
+  frc::SmartDashboard::PutBoolean("Swerve/AllConfigsApplied", m_configsApplied);
 }
 
 void Drivetrain::DisabledInit() {
@@ -99,6 +91,13 @@ void Drivetrain::DisabledInit() {
 }
 
 void Drivetrain::DisabledPeriodic() {
+  if (!m_configsApplied) {
+    static int retryCount = 0;
+    if (++retryCount % 50 == 0) {  // Retry once every 50 loops (1s) while disabled until all configs succeed
+      ConfigureMotors();
+    }
+  }
+
   double fl = m_FL_Steer.GetPosition().GetValueAsDouble();
   double fr = m_FR_Steer.GetPosition().GetValueAsDouble();
   double bl = m_BL_Steer.GetPosition().GetValueAsDouble();
@@ -266,6 +265,11 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     m_BL_Drive.Set(std::clamp(speedBL / speedConst, -DrivetrainConstants::DriveMotorsHardLimit, DrivetrainConstants::DriveMotorsHardLimit));
     m_BR_Drive.Set(std::clamp(-speedBR / speedConst, -DrivetrainConstants::DriveMotorsHardLimit, DrivetrainConstants::DriveMotorsHardLimit));
   }
+
+  frc::SmartDashboard::PutNumber("Swerve/FL_DriveCmd", m_FL_Drive.Get());
+  frc::SmartDashboard::PutNumber("Swerve/FR_DriveCmd", m_FR_Drive.Get());
+  frc::SmartDashboard::PutNumber("Swerve/BL_DriveCmd", m_BL_Drive.Get());
+  frc::SmartDashboard::PutNumber("Swerve/BR_DriveCmd", m_BR_Drive.Get());
 
   // Find Wheel Speeds in MetersPerSecond
   wheelSpeedFL = (m_FL_Drive.GetVelocity().GetValueAsDouble() / DrivetrainConstants::DriveGearRatio) * (M_PI * DrivetrainConstants::WheelCircumference);

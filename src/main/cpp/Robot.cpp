@@ -53,9 +53,9 @@ Robot::Robot() {
   m_teamColorChooser.AddOption("Red", "Red");
   frc::SmartDashboard::PutData("Team Color", &m_teamColorChooser);
 
-  // Controller type chooser - Default to Xbox for robust standard joystick mapping
-  m_controllerChooser.SetDefaultOption("Xbox", "Xbox");
-  m_controllerChooser.AddOption("PS5", "PS5");
+  // Controller type chooser - Default to PS5 DualSense controller
+  m_controllerChooser.SetDefaultOption("PS5", "PS5");
+  m_controllerChooser.AddOption("Xbox", "Xbox");
   m_controllerChooser.AddOption("AutoDetect", "AutoDetect");
   frc::SmartDashboard::PutData("Controller Type", &m_controllerChooser);
 
@@ -102,19 +102,22 @@ void Robot::AutonomousPeriodic() {
 }
 
 void Robot::TeleopInit() {
-
+  // Always ensure swerve motor configs are applied upon entering Teleop
+  m_swerve.ConfigureMotors();
 }
 
 void Robot::TeleopPeriodic() {
   using namespace units::literals;
 
-  // ========== Swerve Driving (Xbox or PS5 on Port 0 / 1) ==========
+  // ========== Swerve Driving (Xbox or PS5 DualSense) ==========
   double rawx = GetDriverLeftX();
   double rawy = GetDriverLeftY();
   double rawx2 = GetDriverRightX();
 
-  triggerL = GetDriverLeftTrigger();
-  triggerR = GetDriverRightTrigger();
+  triggerL = std::clamp(GetDriverLeftTrigger(), 0.0, 1.0);
+  triggerR = std::clamp(GetDriverRightTrigger(), 0.0, 1.0);
+  if (triggerL < 0.05) triggerL = 0.0;
+  if (triggerR < 0.05) triggerR = 0.0;
 
   // Apply deadzones (forward on controller stick is negative Y, so invert rawy)
   x = (std::abs(rawx) >= DrivetrainConstants::xdeadz) ? rawx : 0.0;
@@ -124,15 +127,18 @@ void Robot::TeleopPeriodic() {
   FieldCentric = (m_driveModeChooser.GetSelected() == "FieldCentric");
 
   // Telemetry for verifying driver inputs live on SmartDashboard
+  int activePort = GetDriverPort();
+  frc::SmartDashboard::PutNumber("Driver/ActivePort", activePort);
+  frc::SmartDashboard::PutString("Driver/ControllerType", IsPS5() ? "PS5 DualSense" : "Xbox");
   frc::SmartDashboard::PutNumber("Driver/RawLeftX", rawx);
   frc::SmartDashboard::PutNumber("Driver/RawLeftY", rawy);
   frc::SmartDashboard::PutNumber("Driver/RawRightX", rawx2);
+  frc::SmartDashboard::PutNumber("Driver/RawL2", triggerL);
+  frc::SmartDashboard::PutNumber("Driver/RawR2", triggerR);
   frc::SmartDashboard::PutNumber("Driver/Cmd_X", x);
   frc::SmartDashboard::PutNumber("Driver/Cmd_Y", y);
   frc::SmartDashboard::PutNumber("Driver/Cmd_ROT", x2);
-  frc::SmartDashboard::PutNumber("Driver/ActivePort", GetDriverPort());
-  frc::SmartDashboard::PutBoolean("Driver/Port0Connected", frc::DriverStation::IsJoystickConnected(0));
-  frc::SmartDashboard::PutBoolean("Driver/Port1Connected", frc::DriverStation::IsJoystickConnected(1));
+  frc::SmartDashboard::PutBoolean("Driver/PortConnected", frc::DriverStation::IsJoystickConnected(activePort));
 
   m_swerve.Update(x, y, x2, GyroValue, triggerL, triggerR, FieldCentric);
 
@@ -240,8 +246,11 @@ void Robot::SimulationPeriodic() {
 // ========== Unified Driver Controller Helpers (Xbox & PS5 DualSense) ==========
 
 int Robot::GetDriverPort() const {
-  if (frc::DriverStation::IsJoystickConnected(0)) return 0;
-  if (frc::DriverStation::IsJoystickConnected(1)) return 1;
+  for (int p = 0; p < 6; ++p) {
+    if (frc::DriverStation::IsJoystickConnected(p)) {
+      return p;
+    }
+  }
   return 0;
 }
 
@@ -250,88 +259,111 @@ bool Robot::IsPS5() const {
   if (choice == "PS5") return true;
   if (choice == "Xbox") return false;
 
+  // AutoDetect: Check whether DriverStation recognizes the device as an Xbox controller
   int port = GetDriverPort();
-  if (frc::DriverStation::GetJoystickIsXbox(port)) return false;
-
-  std::string name = frc::DriverStation::GetJoystickName(port);
-  if (name.find("PS5") != std::string::npos ||
-      name.find("DualSense") != std::string::npos ||
-      name.find("Wireless Controller") != std::string::npos ||
-      name.find("Sony") != std::string::npos ||
-      name.find("PlayStation") != std::string::npos) {
-    return true;
+  if (frc::DriverStation::GetJoystickIsXbox(port)) {
+    return false;
   }
-
-  return false;
+  // Any non-Xbox joystick (PS5 DualSense, DirectInput, etc.) defaults to PS5
+  return true;
 }
 
 double Robot::GetDriverLeftX() const {
   int port = GetDriverPort();
   if (IsPS5()) {
-    return (port == 0) ? m_ps5Controller0.GetLeftX() : m_ps5Controller1.GetLeftX();
+    if (port == 0) return m_ps5Controller0.GetLeftX();
+    if (port == 1) return m_ps5Controller1.GetLeftX();
+    return frc::PS5Controller{port}.GetLeftX();
   } else {
-    return (port == 0) ? m_xboxController0.GetLeftX() : m_xboxController1.GetLeftX();
+    if (port == 0) return m_xboxController0.GetLeftX();
+    if (port == 1) return m_xboxController1.GetLeftX();
+    return frc::XboxController{port}.GetLeftX();
   }
 }
 
 double Robot::GetDriverLeftY() const {
   int port = GetDriverPort();
   if (IsPS5()) {
-    return (port == 0) ? m_ps5Controller0.GetLeftY() : m_ps5Controller1.GetLeftY();
+    if (port == 0) return m_ps5Controller0.GetLeftY();
+    if (port == 1) return m_ps5Controller1.GetLeftY();
+    return frc::PS5Controller{port}.GetLeftY();
   } else {
-    return (port == 0) ? m_xboxController0.GetLeftY() : m_xboxController1.GetLeftY();
+    if (port == 0) return m_xboxController0.GetLeftY();
+    if (port == 1) return m_xboxController1.GetLeftY();
+    return frc::XboxController{port}.GetLeftY();
   }
 }
 
 double Robot::GetDriverRightX() const {
   int port = GetDriverPort();
   if (IsPS5()) {
-    return (port == 0) ? m_ps5Controller0.GetRightX() : m_ps5Controller1.GetRightX();
+    if (port == 0) return m_ps5Controller0.GetRightX();
+    if (port == 1) return m_ps5Controller1.GetRightX();
+    return frc::PS5Controller{port}.GetRightX();
   } else {
-    return (port == 0) ? m_xboxController0.GetRightX() : m_xboxController1.GetRightX();
+    if (port == 0) return m_xboxController0.GetRightX();
+    if (port == 1) return m_xboxController1.GetRightX();
+    return frc::XboxController{port}.GetRightX();
   }
 }
 
 double Robot::GetDriverLeftTrigger() const {
   int port = GetDriverPort();
   if (IsPS5()) {
-    return (port == 0) ? m_ps5Controller0.GetL2Axis() : m_ps5Controller1.GetL2Axis();
+    if (port == 0) return m_ps5Controller0.GetL2Axis();
+    if (port == 1) return m_ps5Controller1.GetL2Axis();
+    return frc::PS5Controller{port}.GetL2Axis();
   } else {
-    return (port == 0) ? m_xboxController0.GetLeftTriggerAxis() : m_xboxController1.GetLeftTriggerAxis();
+    if (port == 0) return m_xboxController0.GetLeftTriggerAxis();
+    if (port == 1) return m_xboxController1.GetLeftTriggerAxis();
+    return frc::XboxController{port}.GetLeftTriggerAxis();
   }
 }
 
 double Robot::GetDriverRightTrigger() const {
   int port = GetDriverPort();
   if (IsPS5()) {
-    return (port == 0) ? m_ps5Controller0.GetR2Axis() : m_ps5Controller1.GetR2Axis();
+    if (port == 0) return m_ps5Controller0.GetR2Axis();
+    if (port == 1) return m_ps5Controller1.GetR2Axis();
+    return frc::PS5Controller{port}.GetR2Axis();
   } else {
-    return (port == 0) ? m_xboxController0.GetRightTriggerAxis() : m_xboxController1.GetRightTriggerAxis();
+    if (port == 0) return m_xboxController0.GetRightTriggerAxis();
+    if (port == 1) return m_xboxController1.GetRightTriggerAxis();
+    return frc::XboxController{port}.GetRightTriggerAxis();
   }
 }
 
 bool Robot::GetDriverRightBumperPressed() {
   int port = GetDriverPort();
   if (IsPS5()) {
-    return (port == 0) ? m_ps5Controller0.GetR1ButtonPressed() : m_ps5Controller1.GetR1ButtonPressed();
+    if (port == 0) return m_ps5Controller0.GetR1ButtonPressed();
+    if (port == 1) return m_ps5Controller1.GetR1ButtonPressed();
+    return frc::PS5Controller{port}.GetR1ButtonPressed();
   } else {
-    return (port == 0) ? m_xboxController0.GetRightBumperButtonPressed() : m_xboxController1.GetRightBumperButtonPressed();
+    if (port == 0) return m_xboxController0.GetRightBumperButtonPressed();
+    if (port == 1) return m_xboxController1.GetRightBumperButtonPressed();
+    return frc::XboxController{port}.GetRightBumperButtonPressed();
   }
 }
 
 bool Robot::GetDriverResetGyroPressed() {
   int port = GetDriverPort();
   if (IsPS5()) {
-    return (port == 0)
-        ? (m_ps5Controller0.GetCreateButtonPressed() || m_ps5Controller0.GetTouchpadButtonPressed())
-        : (m_ps5Controller1.GetCreateButtonPressed() || m_ps5Controller1.GetTouchpadButtonPressed());
+    if (port == 0) {
+      return m_ps5Controller0.GetCreateButtonPressed() || m_ps5Controller0.GetTouchpadButtonPressed();
+    }
+    if (port == 1) {
+      return m_ps5Controller1.GetCreateButtonPressed() || m_ps5Controller1.GetTouchpadButtonPressed();
+    }
+    return frc::PS5Controller{port}.GetCreateButtonPressed() ||
+           frc::PS5Controller{port}.GetTouchpadButtonPressed();
   }
   return (port == 0) ? m_xboxController0.GetBackButtonPressed() : m_xboxController1.GetBackButtonPressed();
 }
 
 int Robot::GetDriverPOV() const {
   int port = GetDriverPort();
-  return (port == 0) ? m_xboxController0.GetPOV() : m_xboxController1.GetPOV();
+  return frc::DriverStation::GetStickPOV(port, 0);
 }
 
 #ifndef RUNNING_FRC_TESTS

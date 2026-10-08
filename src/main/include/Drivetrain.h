@@ -31,6 +31,11 @@ class Drivetrain {
   void ConfigureMotors();
 
   /**
+   * @brief Returns true if all TalonFX configurations applied successfully
+   */
+  bool AreConfigsApplied() const { return m_configsApplied; }
+
+  /**
    * @brief Called in DisabledInit to stop drive motors
    */
   void DisabledInit();
@@ -114,6 +119,7 @@ class Drivetrain {
   ctre::phoenix6::hardware::CANcoder CANcoderBR{12};  // Module 1
 
   // ========== Motor Configurations ==========
+  bool m_configsApplied = false;
   ctre::phoenix6::configs::TalonFXConfiguration driveConfig{};
   ctre::phoenix6::configs::TalonFXConfiguration configFL{};
   ctre::phoenix6::configs::TalonFXConfiguration configFR{};
