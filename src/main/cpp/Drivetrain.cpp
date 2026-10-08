@@ -1,7 +1,7 @@
 // ============================================================================
 // FRC Team 8753 - 2026 Swerve Drivetrain Implementation
 // ============================================================================
-// Complete ground-up implementation based 1:1 on ChimiSwerve (Team 1684) White Paper.
+// Complete ground-up rewrite based 1:1 on ChimiSwerve (Team 1684) White Paper.
 // Hardware: 4x MK3.5 Swerve Modules with Kraken X60 (TalonFX) & CTRE CANcoders.
 // ============================================================================
 
@@ -51,35 +51,13 @@ void Drivetrain::ConfigureMotors() {
   setupDrive(driveConfigBL, DrivetrainConstants::kBLDriveInverted);
   setupDrive(driveConfigBR, DrivetrainConstants::kBRDriveInverted);
 
-  auto applyWithRetry = [](ctre::phoenix6::hardware::TalonFX& motor, const auto& cfg) {
-    ctre::phoenix::StatusCode status = ctre::phoenix::StatusCode::StatusCodeNotInitialized;
-    for (int i = 0; i < 2 && !status.IsOK(); ++i) {
-      status = motor.GetConfigurator().Apply(cfg, 0.02_s);
-    }
-  };
+  m_FL_Drive.GetConfigurator().Apply(driveConfigFL);
+  m_FR_Drive.GetConfigurator().Apply(driveConfigFR);
+  m_BL_Drive.GetConfigurator().Apply(driveConfigBL);
+  m_BR_Drive.GetConfigurator().Apply(driveConfigBR);
 
-  applyWithRetry(m_FL_Drive, driveConfigFL);
-  applyWithRetry(m_FR_Drive, driveConfigFR);
-  applyWithRetry(m_BL_Drive, driveConfigBL);
-  applyWithRetry(m_BR_Drive, driveConfigBR);
-
-  // ========== CANcoder Configuration (Magnet Offsets) ==========
-  auto setupCANcoder = [](ctre::phoenix6::hardware::CANcoder& cc, double magnetOffset) {
-    ctre::phoenix6::configs::CANcoderConfiguration cfg{};
-    cfg.MagnetSensor.MagnetOffset = units::angle::turn_t(magnetOffset);
-    cfg.MagnetSensor.SensorDirection =
-        ctre::phoenix6::signals::SensorDirectionValue::CounterClockwise_Positive;
-    cfg.MagnetSensor.AbsoluteSensorDiscontinuityPoint = units::angle::turn_t(0.5);
-    ctre::phoenix::StatusCode status = ctre::phoenix::StatusCode::StatusCodeNotInitialized;
-    for (int i = 0; i < 2 && !status.IsOK(); ++i) {
-      status = cc.GetConfigurator().Apply(cfg, 0.02_s);
-    }
-  };
-
-  setupCANcoder(CANcoderFL, DrivetrainConstants::kFLMagnetOffset);
-  setupCANcoder(CANcoderFR, DrivetrainConstants::kFRMagnetOffset);
-  setupCANcoder(CANcoderBL, DrivetrainConstants::kBLMagnetOffset);
-  setupCANcoder(CANcoderBR, DrivetrainConstants::kBRMagnetOffset);
+  // Note: CANcoders are pre-configured and calibrated in Phoenix Tuner X.
+  // We do NOT call Apply() here to avoid any risk of overwriting calibrated MagnetOffsets!
 
   // ========== Steering Motor Configuration (RemoteCANcoder Fusion) ==========
   auto setupSteerConfig = [](ctre::phoenix6::configs::TalonFXConfiguration& cfg, int canCoderId) {
@@ -108,17 +86,17 @@ void Drivetrain::ConfigureMotors() {
   steerSlot0.kI = DrivetrainConstants::ModuleI;
   steerSlot0.kD = DrivetrainConstants::ModuleD;
 
-  applyWithRetry(m_FL_Steer, steerConfigFL);
-  applyWithRetry(m_FL_Steer, steerSlot0);
+  m_FL_Steer.GetConfigurator().Apply(steerConfigFL);
+  m_FL_Steer.GetConfigurator().Apply(steerSlot0);
 
-  applyWithRetry(m_FR_Steer, steerConfigFR);
-  applyWithRetry(m_FR_Steer, steerSlot0);
+  m_FR_Steer.GetConfigurator().Apply(steerConfigFR);
+  m_FR_Steer.GetConfigurator().Apply(steerSlot0);
 
-  applyWithRetry(m_BL_Steer, steerConfigBL);
-  applyWithRetry(m_BL_Steer, steerSlot0);
+  m_BL_Steer.GetConfigurator().Apply(steerConfigBL);
+  m_BL_Steer.GetConfigurator().Apply(steerSlot0);
 
-  applyWithRetry(m_BR_Steer, steerConfigBR);
-  applyWithRetry(m_BR_Steer, steerSlot0);
+  m_BR_Steer.GetConfigurator().Apply(steerConfigBR);
+  m_BR_Steer.GetConfigurator().Apply(steerSlot0);
 
   // Initialize targets; hasBootstrapped stays false until DisabledPeriodic / Update reads live CAN
   hasBootstrapped = false;
@@ -135,23 +113,17 @@ void Drivetrain::DisabledInit() {
 }
 
 void Drivetrain::DisabledPeriodic() {
-  // Read absolute positions directly from CANcoders (always online, prevents error spam if a steer motor is offline)
-  double ccFL = CANcoderFL.GetPosition().GetValueAsDouble();
-  double ccFR = CANcoderFR.GetPosition().GetValueAsDouble();
-  double ccBL = CANcoderBL.GetPosition().GetValueAsDouble();
-  double ccBR = CANcoderBR.GetPosition().GetValueAsDouble();
-
-  // Read TalonFX positions only if device is communicating
-  double fl = m_FL_Steer.IsConnected() ? m_FL_Steer.GetPosition().GetValueAsDouble() : ccFL;
-  double fr = m_FR_Steer.IsConnected() ? m_FR_Steer.GetPosition().GetValueAsDouble() : ccFR;
-  double bl = m_BL_Steer.IsConnected() ? m_BL_Steer.GetPosition().GetValueAsDouble() : ccBL;
-  double br = m_BR_Steer.IsConnected() ? m_BR_Steer.GetPosition().GetValueAsDouble() : ccBR;
+  // Read live positions from steer motors (updated via RemoteCANcoder)
+  double fl = m_FL_Steer.GetPosition().GetValueAsDouble();
+  double fr = m_FR_Steer.GetPosition().GetValueAsDouble();
+  double bl = m_BL_Steer.GetPosition().GetValueAsDouble();
+  double br = m_BR_Steer.GetPosition().GetValueAsDouble();
 
   // Continuously track current physical angles so enabling causes zero jump
-  lastTargetTurnsFL = ccFL;
-  lastTargetTurnsFR = ccFR;
-  lastTargetTurnsBL = ccBL;
-  lastTargetTurnsBR = ccBR;
+  lastTargetTurnsFL = fl;
+  lastTargetTurnsFR = fr;
+  lastTargetTurnsBL = bl;
+  lastTargetTurnsBR = br;
   hasBootstrapped = true;
 
   // Telemetry: Display both TalonFX steer position and CANcoder position while disabled
@@ -159,6 +131,11 @@ void Drivetrain::DisabledPeriodic() {
   frc::SmartDashboard::PutNumber("Swerve/FR_PositionTurns", fr);
   frc::SmartDashboard::PutNumber("Swerve/BL_PositionTurns", bl);
   frc::SmartDashboard::PutNumber("Swerve/BR_PositionTurns", br);
+
+  double ccFL = CANcoderFL.GetPosition().GetValueAsDouble();
+  double ccFR = CANcoderFR.GetPosition().GetValueAsDouble();
+  double ccBL = CANcoderBL.GetPosition().GetValueAsDouble();
+  double ccBR = CANcoderBR.GetPosition().GetValueAsDouble();
 
   frc::SmartDashboard::PutNumber("Swerve/FL_CANcoderTurns", ccFL);
   frc::SmartDashboard::PutNumber("Swerve/FR_CANcoderTurns", ccFR);
@@ -183,10 +160,10 @@ void Drivetrain::DisabledPeriodic() {
   bool dashBL = frc::SmartDashboard::GetBoolean("Swerve/Inv_BL_Drive", DrivetrainConstants::kBLDriveInverted);
   bool dashBR = frc::SmartDashboard::GetBoolean("Swerve/Inv_BR_Drive", DrivetrainConstants::kBRDriveInverted);
 
-  static bool lastFL = DrivetrainConstants::kFLDriveInverted;
-  static bool lastFR = DrivetrainConstants::kFRDriveInverted;
-  static bool lastBL = DrivetrainConstants::kBLDriveInverted;
-  static bool lastBR = DrivetrainConstants::kBRDriveInverted;
+  static bool lastFL = !DrivetrainConstants::kFLDriveInverted;
+  static bool lastFR = !DrivetrainConstants::kFRDriveInverted;
+  static bool lastBL = !DrivetrainConstants::kBLDriveInverted;
+  static bool lastBR = !DrivetrainConstants::kBRDriveInverted;
 
   if (dashFL != lastFL) {
     lastFL = dashFL;
@@ -223,10 +200,7 @@ void Drivetrain::DisabledPeriodic() {
 // ============================================================================
 double Drivetrain::ChimiOptimizeAzimuth(double waRad, double currentTurns, double& ws) {
   // Convert target angle from radians to turns [-0.5, +0.5]
-  // Note: Kinematics (atan2(STR, FWD)) is Clockwise-positive.
-  // Phoenix 6 CANcoder is CounterClockwise-positive (CCW+).
-  // Negating waRad converts from CW kinematics space to CCW sensor space so strafe and turn point correctly:
-  double targetTurns = -waRad / (2.0 * M_PI);
+  double targetTurns = waRad / (2.0 * M_PI);
 
   // Shortest angular difference between target and current in turns [-0.5, +0.5]
   double errorTurns = std::remainder(targetTurns - currentTurns, 1.0);
@@ -255,11 +229,11 @@ double Drivetrain::ChimiOptimizeAzimuth(double waRad, double currentTurns, doubl
 void Drivetrain::Update(double x, double y, double x2, double GyroValue,
                         double triggerL, double triggerR, bool FieldCentric) {
 
-  // Read current steering motor positions (unbounded turns), fallback to CANcoder if motor is offline
-  double turnsFL = m_FL_Steer.IsConnected() ? m_FL_Steer.GetPosition().GetValueAsDouble() : CANcoderFL.GetPosition().GetValueAsDouble();
-  double turnsFR = m_FR_Steer.IsConnected() ? m_FR_Steer.GetPosition().GetValueAsDouble() : CANcoderFR.GetPosition().GetValueAsDouble();
-  double turnsBL = m_BL_Steer.IsConnected() ? m_BL_Steer.GetPosition().GetValueAsDouble() : CANcoderBL.GetPosition().GetValueAsDouble();
-  double turnsBR = m_BR_Steer.IsConnected() ? m_BR_Steer.GetPosition().GetValueAsDouble() : CANcoderBR.GetPosition().GetValueAsDouble();
+  // Read current steering motor positions (unbounded turns)
+  double turnsFL = m_FL_Steer.GetPosition().GetValueAsDouble();
+  double turnsFR = m_FR_Steer.GetPosition().GetValueAsDouble();
+  double turnsBL = m_BL_Steer.GetPosition().GetValueAsDouble();
+  double turnsBR = m_BR_Steer.GetPosition().GetValueAsDouble();
 
   // Initial bootstrap if not done yet
   if (!hasBootstrapped) {
@@ -271,11 +245,11 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     hasBootstrapped = true;
   }
 
-  // Current physical wheel angles in radians for odometry [-pi, pi] (converted from CCW+ sensor to CW+ kinematics)
-  double waFL_cur = -std::remainder(turnsFL, 1.0) * (2.0 * M_PI);
-  double waFR_cur = -std::remainder(turnsFR, 1.0) * (2.0 * M_PI);
-  double waBL_cur = -std::remainder(turnsBL, 1.0) * (2.0 * M_PI);
-  double waBR_cur = -std::remainder(turnsBR, 1.0) * (2.0 * M_PI);
+  // Current physical wheel angles in radians for odometry [-pi, pi]
+  double waFL_cur = std::remainder(turnsFL, 1.0) * (2.0 * M_PI);
+  double waFR_cur = std::remainder(turnsFR, 1.0) * (2.0 * M_PI);
+  double waBL_cur = std::remainder(turnsBL, 1.0) * (2.0 * M_PI);
+  double waBR_cur = std::remainder(turnsBR, 1.0) * (2.0 * M_PI);
 
   // ========== Neutral / Stop Check (ChimiSwerve Section 2.3d, Page 36) ==========
   // When no translation or rotation is commanded, stop all drive motors immediately.
@@ -384,10 +358,9 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   m_BR_Steer.SetControl(steerRequest.WithPosition(units::angle::turn_t(lastTargetTurnsBR)));
 
   // ========== Speed Scaling (Triggers) ==========
-  double driveSpeedParam = DrivetrainConstants::DefaultDriveSpeed +
-                           (-triggerL * DrivetrainConstants::TriggerConstant) +
-                           (triggerR * DrivetrainConstants::TriggerConstant);
-  double speedConst = 100.0 / std::max(5.0, driveSpeedParam);
+  double speedConst = 100.0 / (DrivetrainConstants::DefaultDriveSpeed +
+                              (-triggerL * DrivetrainConstants::TriggerConstant) +
+                              (triggerR * DrivetrainConstants::TriggerConstant));
 
   // ========== Send Drive Commands ==========
   double cmdFL = 0.0, cmdFR = 0.0, cmdBL = 0.0, cmdBR = 0.0;
@@ -490,11 +463,15 @@ void Drivetrain::odometryUpdate(
   double D = (D_FL + D_BL) / 2.0;
 
   double odoROT = (GyroValue * M_PI / 180.0);
-  ROTField = units::angle::radian_t(odoROT);
 
-  // Robot-relative velocities: average opposing sides (Section 2.2b, Page 19)
-  odoFWD = (A + B) / 2.0;
-  odoSTR = (C + D) / 2.0;
+  // Robot-relative velocities (Page 19)
+  double FWD1 = odoROT * (DrivetrainConstants::L / 2.0) + A;
+  double FWD2 = -odoROT * (DrivetrainConstants::L / 2.0) + B;
+  odoFWD = (FWD1 + FWD2) / 2.0;
+
+  double STR1 = odoROT * (DrivetrainConstants::W / 2.0) + C;
+  double STR2 = -odoROT * (DrivetrainConstants::W / 2.0) + D;
+  odoSTR = (STR1 + STR2) / 2.0;
 
   // Field-centric transformation of velocities (Page 19)
   double gyroRad = GyroValue * (M_PI / 180.0);
