@@ -43,7 +43,7 @@ void Drivetrain::ConfigureMotors() {
   configFL.Feedback.RotorToSensorRatio = DrivetrainConstants::rotorToSensorRatio;
   configFL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod =
       units::time::second_t(DrivetrainConstants::SteeringRampRateSeconds);
-  configFL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Coast;
+  configFL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
   configFL.ClosedLoopGeneral.ContinuousWrap = true;
   configFL.MotorOutput.Inverted = ctre::phoenix6::signals::InvertedValue::CounterClockwise_Positive;
 
@@ -53,7 +53,7 @@ void Drivetrain::ConfigureMotors() {
   configFR.Feedback.RotorToSensorRatio = DrivetrainConstants::rotorToSensorRatio;
   configFR.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod =
       units::time::second_t(DrivetrainConstants::SteeringRampRateSeconds);
-  configFR.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Coast;
+  configFR.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
   configFR.ClosedLoopGeneral.ContinuousWrap = true;
   configFR.MotorOutput.Inverted = ctre::phoenix6::signals::InvertedValue::CounterClockwise_Positive;
 
@@ -63,7 +63,7 @@ void Drivetrain::ConfigureMotors() {
   configBL.Feedback.RotorToSensorRatio = DrivetrainConstants::rotorToSensorRatio;
   configBL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod =
       units::time::second_t(DrivetrainConstants::SteeringRampRateSeconds);
-  configBL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Coast;
+  configBL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
   configBL.ClosedLoopGeneral.ContinuousWrap = true;
   configBL.MotorOutput.Inverted = ctre::phoenix6::signals::InvertedValue::CounterClockwise_Positive;
 
@@ -73,7 +73,7 @@ void Drivetrain::ConfigureMotors() {
   configBR.Feedback.RotorToSensorRatio = DrivetrainConstants::rotorToSensorRatio;
   configBR.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod =
       units::time::second_t(DrivetrainConstants::SteeringRampRateSeconds);
-  configBR.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Coast;
+  configBR.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
   configBR.ClosedLoopGeneral.ContinuousWrap = true;
   configBR.MotorOutput.Inverted = ctre::phoenix6::signals::InvertedValue::CounterClockwise_Positive;
 
@@ -162,6 +162,36 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     ROT = output;
   }
 
+  bool isDriving = (std::abs(x) > 0.001 || std::abs(y) > 0.001 || std::abs(x2) > 0.001);
+
+  if (!isDriving) {
+    // When stationary, stop all drive motors immediately and prevent steer jitter
+    speedFL = 0.0;
+    speedFR = 0.0;
+    speedBL = 0.0;
+    speedBR = 0.0;
+    m_FL_Drive.Set(0.0);
+    m_FR_Drive.Set(0.0);
+    m_BL_Drive.Set(0.0);
+    m_BR_Drive.Set(0.0);
+
+    targetAngle = GyroValue;
+    m_headingIError = 0.0;
+    m_headingLastError = 0.0;
+
+    odometryUpdate(
+        FL_pos,
+        FR_pos,
+        BL_pos,
+        BR_pos,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        GyroValue);
+    return;
+  }
+
   // Calculate variables A, B, C, D
   double A = (STR - ROT * DrivetrainConstants::L / 2.0);
   double B = (STR + ROT * DrivetrainConstants::L / 2.0);
@@ -169,17 +199,10 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   double D = (FWD + ROT * DrivetrainConstants::W / 2.0);
 
   // Calculate wheel speeds
-  if (x != 0.0 || y != 0.0 || x2 != 0.0) {
-    speedFL = std::hypot(B, D);
-    speedFR = std::hypot(B, C);
-    speedBL = std::hypot(A, D);
-    speedBR = std::hypot(A, C);
-  } else {
-    speedFL = 0.0;
-    speedFR = 0.0;
-    speedBL = 0.0;
-    speedBR = 0.0;
-  }
+  speedFL = std::hypot(B, D);
+  speedFR = std::hypot(B, C);
+  speedBL = std::hypot(A, D);
+  speedBR = std::hypot(A, C);
 
   std::vector<double> wheelSpeeds = {speedFL, speedFR, speedBL, speedBR};
 
@@ -195,12 +218,10 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   }
 
   // Calculate final angle for each wheel
-  if (x != 0.0 || y != 0.0 || x2 != 0.0) {
-    tempangleFL = std::atan2(B, D);
-    tempangleFR = std::atan2(B, C);
-    tempangleBL = std::atan2(A, D);
-    tempangleBR = std::atan2(A, C);
-  }
+  tempangleFL = std::atan2(B, D);
+  tempangleFR = std::atan2(B, C);
+  tempangleBL = std::atan2(A, D);
+  tempangleBR = std::atan2(A, C);
 
   // Adjust angles to ensure minimal rotation
   angleFL = MinimizeRotation(tempangleFL, FL_pos, speedFL);
@@ -267,7 +288,7 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
 double Drivetrain::MinimizeRotation(double targetAngleRad, double currentAngleRad, double& speedPercent) {
   double errorRad = std::remainder(targetAngleRad - currentAngleRad, 2.0 * M_PI);
 
-  if (std::fabs(errorRad) > M_PI / 2.0) {
+  if (std::fabs(speedPercent) > 0.01 && std::fabs(errorRad) > M_PI / 2.0) {
     errorRad -= std::copysign(M_PI, errorRad);
     speedPercent = -speedPercent;
   }
@@ -366,3 +387,4 @@ void Drivetrain::UpdateSim(units::time::second_t dt) {
   CANcoderBL.GetSimState().SetRawPosition(units::angle::turn_t(angleBL / (2.0 * M_PI)));
   CANcoderBR.GetSimState().SetRawPosition(units::angle::turn_t(angleBR / (2.0 * M_PI)));
 }
+

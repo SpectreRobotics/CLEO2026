@@ -29,7 +29,8 @@ Robot::Robot() {
   // Configure swerve drivetrain motors
   m_swerve.ConfigureMotors();
 
-  // Configure slide motor (Kraken X44) in brake mode and zero position
+  // All other motors (slide, intake, feeder, indexer, turret) are commented out (swerve-only mode)
+  /*
   ctre::phoenix6::configs::TalonFXConfiguration slideConfig{};
   slideConfig.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
   slideConfig.CurrentLimits.StatorCurrentLimitEnable = true;
@@ -37,7 +38,6 @@ Robot::Robot() {
   m_slideMotor.GetConfigurator().Apply(slideConfig);
   m_slideMotor.SetPosition(0_tr);
 
-  // Configure intake, indexer, and feeder current limits to prevent stall burnout
   ctre::phoenix6::configs::CurrentLimitsConfigs mechLimits{};
   mechLimits.StatorCurrentLimitEnable = true;
   mechLimits.StatorCurrentLimit = units::current::ampere_t(40.0);
@@ -45,21 +45,21 @@ Robot::Robot() {
   m_indexer.GetConfigurator().Apply(mechLimits);
   m_feeder.GetConfigurator().Apply(mechLimits);
 
-  // Configure modular turret subsystem (Kraken X44 rotation, 2x Kraken X60 shooter, 2x REV servos)
   m_turret.ConfigureMotors();
+  */
 
   // Team color chooser - select your alliance for Hub targeting
   m_teamColorChooser.SetDefaultOption("Blue", "Blue");
   m_teamColorChooser.AddOption("Red", "Red");
   frc::SmartDashboard::PutData("Team Color", &m_teamColorChooser);
 
-  // Controller type chooser - AutoDetect, PS5, or Xbox
-  m_controllerChooser.SetDefaultOption("AutoDetect", "AutoDetect");
+  // Controller type chooser - Default to Xbox for robust standard joystick mapping
+  m_controllerChooser.SetDefaultOption("Xbox", "Xbox");
   m_controllerChooser.AddOption("PS5", "PS5");
-  m_controllerChooser.AddOption("Xbox", "Xbox");
+  m_controllerChooser.AddOption("AutoDetect", "AutoDetect");
   frc::SmartDashboard::PutData("Controller Type", &m_controllerChooser);
 
-  // Pump mode toggle - when ON, intake oscillates forward/back during shooting
+  // Pump mode toggle
   frc::SmartDashboard::PutBoolean("Intake/PumpMode", false);
 }
 
@@ -77,12 +77,15 @@ void Robot::RobotPeriodic() {
   frc::SmartDashboard::PutNumber("GyroYawDeg", m_pigeon.GetYaw().GetValueAsDouble());
   frc::SmartDashboard::PutString("Controller/ActiveType", IsPS5() ? "PS5 DualSense" : "Xbox");
 
+  // Non-swerve telemetry commented out (swerve-only mode)
+  /*
   double slidePos = m_slideMotor.GetPosition().GetValueAsDouble();
   frc::SmartDashboard::PutNumber("Slide Position Rot", slidePos);
   frc::SmartDashboard::PutBoolean("Intake Out", m_intakeOut);
 
   // Periodic turret telemetry
   m_turret.Periodic();
+  */
 
   // Display odometry on SmartDashboard
   frc::SmartDashboard::PutNumber("Odometry/FusedX", m_swerve.positionFWDField.value());
@@ -100,16 +103,12 @@ void Robot::AutonomousPeriodic() {
 
 void Robot::TeleopInit() {
 
-
-
-
-
 }
 
 void Robot::TeleopPeriodic() {
   using namespace units::literals;
 
-  // ========== Swerve Driving (Xbox or PS5) ==========
+  // ========== Swerve Driving (Xbox or PS5 on Port 0 / 1) ==========
   double rawx = GetDriverLeftX();
   double rawy = GetDriverLeftY();
   double rawx2 = GetDriverRightX();
@@ -124,38 +123,42 @@ void Robot::TeleopPeriodic() {
 
   FieldCentric = (m_driveModeChooser.GetSelected() == "FieldCentric");
 
+  // Telemetry for verifying driver inputs live on SmartDashboard
+  frc::SmartDashboard::PutNumber("Driver/RawLeftX", rawx);
+  frc::SmartDashboard::PutNumber("Driver/RawLeftY", rawy);
+  frc::SmartDashboard::PutNumber("Driver/RawRightX", rawx2);
+  frc::SmartDashboard::PutNumber("Driver/Cmd_X", x);
+  frc::SmartDashboard::PutNumber("Driver/Cmd_Y", y);
+  frc::SmartDashboard::PutNumber("Driver/Cmd_ROT", x2);
+  frc::SmartDashboard::PutNumber("Driver/ActivePort", GetDriverPort());
+  frc::SmartDashboard::PutBoolean("Driver/Port0Connected", frc::DriverStation::IsJoystickConnected(0));
+  frc::SmartDashboard::PutBoolean("Driver/Port1Connected", frc::DriverStation::IsJoystickConnected(1));
+
   m_swerve.Update(x, y, x2, GyroValue, triggerL, triggerR, FieldCentric);
 
-  // ========== Slide & Intake Controls ==========
+  // All other mechanisms (slide, intake, turret, indexer, feeder) commented out (swerve-only mode)
+  /*
   double slidePos = m_slideMotor.GetPosition().GetValueAsDouble();
   int pov = GetDriverPOV();
   bool isShooting = triggerL > 0.15;
 
-  // Right bumper (RB on Xbox / R1 on PS5) toggles intake in/out
   if (GetDriverRightBumperPressed()) {
     m_intakeOut = !m_intakeOut;
   }
 
-  // D-pad UP/DOWN: Manual slide override (safety backup)
   if (pov == 0) {
     m_slideMotor.Set(kSlideSpeed);
   } else if (pov == 180) {
     m_slideMotor.Set(-kSlideSpeed);
   } else if (m_intakeOut) {
-    // ---- INTAKE OUT ----
-    // Slide runs forward until it reaches target extension
     if (slidePos < kSlideOneFootRotations) {
       m_slideMotor.Set(kSlideSpeed);
     } else {
       m_slideMotor.Set(0.0);
     }
-    // Intake roller spins when the slide is out
     m_IntakeMotor.Set(kIntakeSpeed);
   } else {
-    // ---- INTAKE IN ----
-    // Intake roller stops INSTANTLY when retracting
     m_IntakeMotor.Set(0.0);
-    // Retract slide until it reaches home position
     if (slidePos > 0.1) {
       m_slideMotor.Set(-kSlideSpeed);
     } else {
@@ -163,38 +166,25 @@ void Robot::TeleopPeriodic() {
     }
   }
 
-  // Pump Mode: optional SmartDashboard toggle
-  // When shooting AND pump is enabled, intake roller oscillates forward/back
-  // to help feed game pieces into the indexer
   bool pumpEnabled = frc::SmartDashboard::GetBoolean("Intake/PumpMode", false);
   if (isShooting && pumpEnabled) {
-    // 0.8 second oscillation period: 0.4s forward, 0.4s backward
     double pumpTime = std::fmod(frc::Timer::GetFPGATimestamp().value(), 0.8);
     if (pumpTime < 0.4) {
-      m_IntakeMotor.Set(0.3);   // Slow forward
+      m_IntakeMotor.Set(0.3);
     } else {
-      m_IntakeMotor.Set(-0.3);  // Slow backward
+      m_IntakeMotor.Set(-0.3);
     }
   }
 
-  // ========== Turret: Always Auto-Targets Hub ==========
-  // Set alliance color from SmartDashboard chooser (affects which Hub to target)
   m_turret.SetAllianceRed(m_teamColorChooser.GetSelected() == "Red");
-
-  // Turret always tracks the Hub using PhotonVision camera + odometry fallback
   m_turret.SetTargetingMode(Turret::TargetingMode::kAuto);
   m_turret.UpdateAutoTarget(
       m_swerve.positionFWDField,
       m_swerve.positionSTRField,
       units::angle::degree_t(m_pigeon.GetYaw().GetValueAsDouble()));
 
-  // Left trigger controls shooting:
-  //   Hold trigger  -> spin up flywheels + raise hood (based on distance from vision or odometry)
-  //   Release       -> stop flywheels + lower hood all the way down
   m_turret.Shoot(triggerL);
 
-  // ========== Indexer & Feeder (Run When Shooting AND Flywheels/Turret Ready) ==========
-  // Safely interlock feeding so balls only feed into flywheels that are at speed and locked on target
   bool isReadyToShoot = m_turret.IsReadyToShoot();
   frc::SmartDashboard::PutBoolean("Turret/ReadyToShoot", isReadyToShoot);
 
@@ -206,9 +196,9 @@ void Robot::TeleopPeriodic() {
     m_feeder.Set(0.0);
   }
 
-  // Display turret status
   frc::SmartDashboard::PutBoolean("Turret/Locked", m_turret.IsTargetLocked());
   frc::SmartDashboard::PutNumber("Turret/DistToHub", m_turret.GetTargetDistanceMeters());
+  */
 }
 
 void Robot::DisabledInit() {
@@ -236,28 +226,34 @@ void Robot::SimulationPeriodic() {
     m_pigeon.GetSimState().AddYaw(units::angle::degree_t(-x2 * 360.0 * 0.02));
   }
 
-  // Step slide motor simulation physics (clamped between 0.0 home and 1.0 ft hardstop)
+  // Mechanism simulation commented out (swerve-only mode)
+  /*
   double currentSlideRot = m_slideMotor.GetPosition().GetValueAsDouble();
   double nextSlideRot = currentSlideRot + (m_slideMotor.Get() * 25.0 * 0.02);
   nextSlideRot = std::clamp(nextSlideRot, 0.0, kSlideOneFootRotations);
   m_slideMotor.GetSimState().SetRawRotorPosition(units::angle::turn_t(nextSlideRot));
 
-  // Step turret simulation physics
   m_turret.UpdateSim(20_ms);
+  */
 }
 
 // ========== Unified Driver Controller Helpers (Xbox & PS5 DualSense) ==========
+
+int Robot::GetDriverPort() const {
+  if (frc::DriverStation::IsJoystickConnected(0)) return 0;
+  if (frc::DriverStation::IsJoystickConnected(1)) return 1;
+  return 0;
+}
 
 bool Robot::IsPS5() const {
   std::string choice = m_controllerChooser.GetSelected();
   if (choice == "PS5") return true;
   if (choice == "Xbox") return false;
 
-  // AutoDetect: Check DriverStation joystick name and Xbox flag
-  if (!frc::DriverStation::IsJoystickConnected(0)) return false;
-  if (frc::DriverStation::GetJoystickIsXbox(0)) return false;
+  int port = GetDriverPort();
+  if (frc::DriverStation::GetJoystickIsXbox(port)) return false;
 
-  std::string name = frc::DriverStation::GetJoystickName(0);
+  std::string name = frc::DriverStation::GetJoystickName(port);
   if (name.find("PS5") != std::string::npos ||
       name.find("DualSense") != std::string::npos ||
       name.find("Wireless Controller") != std::string::npos ||
@@ -266,55 +262,76 @@ bool Robot::IsPS5() const {
     return true;
   }
 
-  // PS5 DualSense reports > 10 buttons (typically 14-16) vs Xbox 10
-  if (frc::DriverStation::GetStickButtonCount(0) > 10) {
-    return true;
-  }
-
   return false;
 }
 
 double Robot::GetDriverLeftX() const {
-  if (!frc::DriverStation::IsJoystickConnected(0)) return 0.0;
-  return IsPS5() ? m_ps5Controller.GetLeftX() : m_xboxController.GetLeftX();
+  int port = GetDriverPort();
+  if (IsPS5()) {
+    return (port == 0) ? m_ps5Controller0.GetLeftX() : m_ps5Controller1.GetLeftX();
+  } else {
+    return (port == 0) ? m_xboxController0.GetLeftX() : m_xboxController1.GetLeftX();
+  }
 }
 
 double Robot::GetDriverLeftY() const {
-  if (!frc::DriverStation::IsJoystickConnected(0)) return 0.0;
-  return IsPS5() ? m_ps5Controller.GetLeftY() : m_xboxController.GetLeftY();
+  int port = GetDriverPort();
+  if (IsPS5()) {
+    return (port == 0) ? m_ps5Controller0.GetLeftY() : m_ps5Controller1.GetLeftY();
+  } else {
+    return (port == 0) ? m_xboxController0.GetLeftY() : m_xboxController1.GetLeftY();
+  }
 }
 
 double Robot::GetDriverRightX() const {
-  if (!frc::DriverStation::IsJoystickConnected(0)) return 0.0;
-  return IsPS5() ? m_ps5Controller.GetRightX() : m_xboxController.GetRightX();
+  int port = GetDriverPort();
+  if (IsPS5()) {
+    return (port == 0) ? m_ps5Controller0.GetRightX() : m_ps5Controller1.GetRightX();
+  } else {
+    return (port == 0) ? m_xboxController0.GetRightX() : m_xboxController1.GetRightX();
+  }
 }
 
 double Robot::GetDriverLeftTrigger() const {
-  if (!frc::DriverStation::IsJoystickConnected(0)) return 0.0;
-  return IsPS5() ? m_ps5Controller.GetL2Axis() : m_xboxController.GetLeftTriggerAxis();
+  int port = GetDriverPort();
+  if (IsPS5()) {
+    return (port == 0) ? m_ps5Controller0.GetL2Axis() : m_ps5Controller1.GetL2Axis();
+  } else {
+    return (port == 0) ? m_xboxController0.GetLeftTriggerAxis() : m_xboxController1.GetLeftTriggerAxis();
+  }
 }
 
 double Robot::GetDriverRightTrigger() const {
-  if (!frc::DriverStation::IsJoystickConnected(0)) return 0.0;
-  return IsPS5() ? m_ps5Controller.GetR2Axis() : m_xboxController.GetRightTriggerAxis();
+  int port = GetDriverPort();
+  if (IsPS5()) {
+    return (port == 0) ? m_ps5Controller0.GetR2Axis() : m_ps5Controller1.GetR2Axis();
+  } else {
+    return (port == 0) ? m_xboxController0.GetRightTriggerAxis() : m_xboxController1.GetRightTriggerAxis();
+  }
 }
 
 bool Robot::GetDriverRightBumperPressed() {
-  if (!frc::DriverStation::IsJoystickConnected(0)) return false;
-  return IsPS5() ? m_ps5Controller.GetR1ButtonPressed() : m_xboxController.GetRightBumperButtonPressed();
+  int port = GetDriverPort();
+  if (IsPS5()) {
+    return (port == 0) ? m_ps5Controller0.GetR1ButtonPressed() : m_ps5Controller1.GetR1ButtonPressed();
+  } else {
+    return (port == 0) ? m_xboxController0.GetRightBumperButtonPressed() : m_xboxController1.GetRightBumperButtonPressed();
+  }
 }
 
 bool Robot::GetDriverResetGyroPressed() {
-  if (!frc::DriverStation::IsJoystickConnected(0)) return false;
+  int port = GetDriverPort();
   if (IsPS5()) {
-    return m_ps5Controller.GetCreateButtonPressed() || m_ps5Controller.GetTouchpadButtonPressed();
+    return (port == 0)
+        ? (m_ps5Controller0.GetCreateButtonPressed() || m_ps5Controller0.GetTouchpadButtonPressed())
+        : (m_ps5Controller1.GetCreateButtonPressed() || m_ps5Controller1.GetTouchpadButtonPressed());
   }
-  return m_xboxController.GetBackButtonPressed();
+  return (port == 0) ? m_xboxController0.GetBackButtonPressed() : m_xboxController1.GetBackButtonPressed();
 }
 
 int Robot::GetDriverPOV() const {
-  if (!frc::DriverStation::IsJoystickConnected(0)) return -1;
-  return IsPS5() ? m_ps5Controller.GetPOV() : m_xboxController.GetPOV();
+  int port = GetDriverPort();
+  return (port == 0) ? m_xboxController0.GetPOV() : m_xboxController1.GetPOV();
 }
 
 #ifndef RUNNING_FRC_TESTS
