@@ -72,8 +72,9 @@ void Robot::RobotPeriodic() {
   if (GetDriverResetGyroPressed()) {
     m_pigeon.Reset();
   }
-  GyroValue = std::fmod(m_pigeon.GetYaw().GetValueAsDouble(), 360.0);
+  GyroValue = -std::fmod(m_pigeon.GetYaw().GetValueAsDouble(), 360.0);
   frc::SmartDashboard::PutNumber("Gyro Heading", GyroValue);
+  frc::SmartDashboard::PutNumber("GyroYawDeg", m_pigeon.GetYaw().GetValueAsDouble());
   frc::SmartDashboard::PutString("Controller/ActiveType", IsPS5() ? "PS5 DualSense" : "Xbox");
 
   double slidePos = m_slideMotor.GetPosition().GetValueAsDouble();
@@ -185,7 +186,7 @@ void Robot::TeleopPeriodic() {
   m_turret.UpdateAutoTarget(
       m_swerve.positionFWDField,
       m_swerve.positionSTRField,
-      units::angle::degree_t(GyroValue));
+      units::angle::degree_t(m_pigeon.GetYaw().GetValueAsDouble()));
 
   // Left trigger controls shooting:
   //   Hold trigger  -> spin up flywheels + raise hood (based on distance from vision or odometry)
