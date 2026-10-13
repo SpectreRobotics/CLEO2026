@@ -21,8 +21,8 @@ namespace TurretConstants {
   constexpr int kShooterRightMotorId = 6; ///< Kraken X60 secondary shooter flywheel
   constexpr int kServoHubId = 8;          ///< REV ServoHub CAN ID
 
-  // CAN bus name for shooter Kraken motors ("outtake" or "rio")
-  inline constexpr const char* kShooterCanBus = "outtake";
+  // CAN bus name for shooter Kraken motors ("rio" or "outtake")
+  inline constexpr const char* kShooterCanBus = "rio";
 
   // ========== Fixed Shooter Chassis Orientation ==========
   /**

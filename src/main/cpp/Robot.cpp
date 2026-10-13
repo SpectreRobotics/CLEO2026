@@ -30,8 +30,8 @@ Robot::Robot() {
   // Configure swerve drivetrain motors
   m_swerve.ConfigureMotors();
 
-  // Configure shooter flywheels & hood servos
-  m_turret.ConfigureMotors();
+  // Configure shooter flywheels & hood servos (Commented out - swerve only)
+  // m_turret.ConfigureMotors();
 
   // Team color chooser - select your alliance for Hub targeting
   m_teamColorChooser.SetDefaultOption("Blue", "Blue");
@@ -66,9 +66,9 @@ void Robot::RobotPeriodic() {
   frc::SmartDashboard::PutNumber("Gyro Heading", GyroValue);
   frc::SmartDashboard::PutString("Controller/ActiveType", IsPS5() ? "PS5 DualSense" : "Xbox");
 
-  // Shooter telemetry and alliance update
-  m_turret.SetAllianceRed(m_teamColorChooser.GetSelected() == "Red");
-  m_turret.Periodic();
+  // Shooter telemetry and alliance update (Commented out - swerve only)
+  // m_turret.SetAllianceRed(m_teamColorChooser.GetSelected() == "Red");
+  // m_turret.Periodic();
 
   // Swerve telemetry + odometry (every mode)
   m_swerve.Periodic(GyroValue * std::numbers::pi / 180.0);
@@ -127,24 +127,21 @@ void Robot::TeleopPeriodic() {
   FieldCentric = (m_driveModeChooser.GetSelected() == "FieldCentric");
 
 
+  // Shooter / auto-aim commented out - swerve only
+  /*
   bool isShooting = (triggerL > 0.15);
-
-  // Always update targeting state (Limelight / PhotonVision optical tracking + odometry fallback)
   m_turret.UpdateAutoTarget(
       units::length::meter_t(m_swerve.GetX()),
       units::length::meter_t(m_swerve.GetY()),
       units::angle::degree_t(GyroValue));
 
   if (isShooting) {
-    // 1. LOCK ROTATION to face the Hub! Translation (forward/left) remains fully active.
     rotCCW = m_turret.CalculateAimRotation(GyroValue);
-
-    // 2. Spin up flywheels & adjust hood pitch for target distance
     m_turret.Shoot(triggerL);
   } else {
-    // UNLOCK ROTATION: driver has normal manual right-stick rotation control
     m_turret.StopShooter();
   }
+  */
 
   // Telemetry for verifying driver inputs live on SmartDashboard
   int activePort = GetDriverPort();
@@ -159,9 +156,8 @@ void Robot::TeleopPeriodic() {
   frc::SmartDashboard::PutNumber("Driver/Cmd_Left", left);
   frc::SmartDashboard::PutNumber("Driver/Cmd_RotCCW", rotCCW);
   frc::SmartDashboard::PutNumber("Driver/SpeedScale", scale);
-  frc::SmartDashboard::PutBoolean("Driver/PortConnected", frc::DriverStation::IsJoystickConnected(activePort));
-  frc::SmartDashboard::PutBoolean("Shooter/IsShootingActive", isShooting);
-  frc::SmartDashboard::PutBoolean("Shooter/RotationLocked", isShooting);
+  // frc::SmartDashboard::PutBoolean("Shooter/IsShootingActive", false);
+  // frc::SmartDashboard::PutBoolean("Shooter/RotationLocked", false);
 
   m_swerve.Drive(forward, left, rotCCW, scale, GyroValue * std::numbers::pi / 180.0, FieldCentric);
 }
@@ -201,8 +197,8 @@ void Robot::SimulationPeriodic() {
     m_pigeon.GetSimState().AddYaw(units::angle::degree_t(x2 * 360.0 * 0.02));
   }
 
-  // Shooter simulation
-  m_turret.UpdateSim(20_ms);
+  // Shooter simulation (Commented out - swerve only)
+  // m_turret.UpdateSim(20_ms);
 }
 
 // ========== Unified Driver Controller Helpers (Xbox & PS5 DualSense) ==========
