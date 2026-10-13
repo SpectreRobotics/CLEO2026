@@ -30,24 +30,8 @@ Robot::Robot() {
   // Configure swerve drivetrain motors
   m_swerve.ConfigureMotors();
 
-  // All other motors (slide, intake, feeder, indexer, turret) are commented out (swerve-only mode)
-  /*
-  ctre::phoenix6::configs::TalonFXConfiguration slideConfig{};
-  slideConfig.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  slideConfig.CurrentLimits.StatorCurrentLimitEnable = true;
-  slideConfig.CurrentLimits.StatorCurrentLimit = units::current::ampere_t(40.0);
-  m_slideMotor.GetConfigurator().Apply(slideConfig);
-  m_slideMotor.SetPosition(0_tr);
-
-  ctre::phoenix6::configs::CurrentLimitsConfigs mechLimits{};
-  mechLimits.StatorCurrentLimitEnable = true;
-  mechLimits.StatorCurrentLimit = units::current::ampere_t(40.0);
-  m_IntakeMotor.GetConfigurator().Apply(mechLimits);
-  m_indexer.GetConfigurator().Apply(mechLimits);
-  m_feeder.GetConfigurator().Apply(mechLimits);
-
+  // Configure shooter flywheels & hood servos
   m_turret.ConfigureMotors();
-  */
 
   // Team color chooser - select your alliance for Hub targeting
   m_teamColorChooser.SetDefaultOption("Blue", "Blue");
@@ -82,15 +66,9 @@ void Robot::RobotPeriodic() {
   frc::SmartDashboard::PutNumber("Gyro Heading", GyroValue);
   frc::SmartDashboard::PutString("Controller/ActiveType", IsPS5() ? "PS5 DualSense" : "Xbox");
 
-  // Non-swerve telemetry commented out (swerve-only mode)
-  /*
-  double slidePos = m_slideMotor.GetPosition().GetValueAsDouble();
-  frc::SmartDashboard::PutNumber("Slide Position Rot", slidePos);
-  frc::SmartDashboard::PutBoolean("Intake Out", m_intakeOut);
-
-  // Periodic turret telemetry
+  // Shooter telemetry and alliance update
+  m_turret.SetAllianceRed(m_teamColorChooser.GetSelected() == "Red");
   m_turret.Periodic();
-  */
 
   // Swerve telemetry + odometry (every mode)
   m_swerve.Periodic(GyroValue * std::numbers::pi / 180.0);
@@ -148,6 +126,26 @@ void Robot::TeleopPeriodic() {
 
   FieldCentric = (m_driveModeChooser.GetSelected() == "FieldCentric");
 
+
+  bool isShooting = (triggerL > 0.15);
+
+  // Always update targeting state (Limelight / PhotonVision optical tracking + odometry fallback)
+  m_turret.UpdateAutoTarget(
+      units::length::meter_t(m_swerve.GetX()),
+      units::length::meter_t(m_swerve.GetY()),
+      units::angle::degree_t(GyroValue));
+
+  if (isShooting) {
+    // 1. LOCK ROTATION to face the Hub! Translation (forward/left) remains fully active.
+    rotCCW = m_turret.CalculateAimRotation(GyroValue);
+
+    // 2. Spin up flywheels & adjust hood pitch for target distance
+    m_turret.Shoot(triggerL);
+  } else {
+    // UNLOCK ROTATION: driver has normal manual right-stick rotation control
+    m_turret.StopShooter();
+  }
+
   // Telemetry for verifying driver inputs live on SmartDashboard
   int activePort = GetDriverPort();
   frc::SmartDashboard::PutNumber("Driver/ActivePort", activePort);
@@ -162,72 +160,10 @@ void Robot::TeleopPeriodic() {
   frc::SmartDashboard::PutNumber("Driver/Cmd_RotCCW", rotCCW);
   frc::SmartDashboard::PutNumber("Driver/SpeedScale", scale);
   frc::SmartDashboard::PutBoolean("Driver/PortConnected", frc::DriverStation::IsJoystickConnected(activePort));
+  frc::SmartDashboard::PutBoolean("Shooter/IsShootingActive", isShooting);
+  frc::SmartDashboard::PutBoolean("Shooter/RotationLocked", isShooting);
 
   m_swerve.Drive(forward, left, rotCCW, scale, GyroValue * std::numbers::pi / 180.0, FieldCentric);
-
-  // All other mechanisms (slide, intake, turret, indexer, feeder) commented out (swerve-only mode)
-  /*
-  double slidePos = m_slideMotor.GetPosition().GetValueAsDouble();
-  int pov = GetDriverPOV();
-  bool isShooting = triggerL > 0.15;
-
-  if (GetDriverRightBumperPressed()) {
-    m_intakeOut = !m_intakeOut;
-  }
-
-  if (pov == 0) {
-    m_slideMotor.Set(kSlideSpeed);
-  } else if (pov == 180) {
-    m_slideMotor.Set(-kSlideSpeed);
-  } else if (m_intakeOut) {
-    if (slidePos < kSlideOneFootRotations) {
-      m_slideMotor.Set(kSlideSpeed);
-    } else {
-      m_slideMotor.Set(0.0);
-    }
-    m_IntakeMotor.Set(kIntakeSpeed);
-  } else {
-    m_IntakeMotor.Set(0.0);
-    if (slidePos > 0.1) {
-      m_slideMotor.Set(-kSlideSpeed);
-    } else {
-      m_slideMotor.Set(0.0);
-    }
-  }
-
-  bool pumpEnabled = frc::SmartDashboard::GetBoolean("Intake/PumpMode", false);
-  if (isShooting && pumpEnabled) {
-    double pumpTime = std::fmod(frc::Timer::GetFPGATimestamp().value(), 0.8);
-    if (pumpTime < 0.4) {
-      m_IntakeMotor.Set(0.3);
-    } else {
-      m_IntakeMotor.Set(-0.3);
-    }
-  }
-
-  m_turret.SetAllianceRed(m_teamColorChooser.GetSelected() == "Red");
-  m_turret.SetTargetingMode(Turret::TargetingMode::kAuto);
-  m_turret.UpdateAutoTarget(
-      m_swerve.positionFWDField,
-      m_swerve.positionSTRField,
-      units::angle::degree_t(m_pigeon.GetYaw().GetValueAsDouble()));
-
-  m_turret.Shoot(triggerL);
-
-  bool isReadyToShoot = m_turret.IsReadyToShoot();
-  frc::SmartDashboard::PutBoolean("Turret/ReadyToShoot", isReadyToShoot);
-
-  if (isShooting && isReadyToShoot) {
-    m_indexer.Set(0.8);
-    m_feeder.Set(0.8);
-  } else {
-    m_indexer.Set(0.0);
-    m_feeder.Set(0.0);
-  }
-
-  frc::SmartDashboard::PutBoolean("Turret/Locked", m_turret.IsTargetLocked());
-  frc::SmartDashboard::PutNumber("Turret/DistToHub", m_turret.GetTargetDistanceMeters());
-  */
 }
 
 void Robot::DisabledInit() {
@@ -265,15 +201,8 @@ void Robot::SimulationPeriodic() {
     m_pigeon.GetSimState().AddYaw(units::angle::degree_t(x2 * 360.0 * 0.02));
   }
 
-  // Mechanism simulation commented out (swerve-only mode)
-  /*
-  double currentSlideRot = m_slideMotor.GetPosition().GetValueAsDouble();
-  double nextSlideRot = currentSlideRot + (m_slideMotor.Get() * 25.0 * 0.02);
-  nextSlideRot = std::clamp(nextSlideRot, 0.0, kSlideOneFootRotations);
-  m_slideMotor.GetSimState().SetRawRotorPosition(units::angle::turn_t(nextSlideRot));
-
+  // Shooter simulation
   m_turret.UpdateSim(20_ms);
-  */
 }
 
 // ========== Unified Driver Controller Helpers (Xbox & PS5 DualSense) ==========

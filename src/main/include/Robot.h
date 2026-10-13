@@ -92,8 +92,8 @@ class Robot : public frc::TimedRobot {
 
   frc::SendableChooser<std::string> m_driveModeChooser;
 
-  // ========== Turret Subsystem (Commented out - swerve only) ==========
-  // Turret m_turret;
+  // ========== Fixed Shooter Subsystem ==========
+  Turret m_turret;
 
   // ========== Team Color Chooser ==========
   frc::SendableChooser<std::string> m_teamColorChooser;

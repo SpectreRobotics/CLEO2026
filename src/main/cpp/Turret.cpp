@@ -1,5 +1,5 @@
 // ============================================================================
-// FRC Team 8753 - 2026 Modular Turret Subsystem Implementation
+// FRC Team 8753 - 2026 Shooter Subsystem Implementation (Fixed Chassis Mount)
 // ============================================================================
 
 #include "Turret.h"
@@ -12,47 +12,25 @@
 #endif
 #include <frc/DriverStation.h>
 #include <frc/smartdashboard/SmartDashboard.h>
+#include <frc/Timer.h>
+
+#include "LimelightHelpers.h"
 
 using namespace units::literals;
 
-Turret::Turret() {
-  // Motor configurations are applied in ConfigureMotors()
-}
+Turret::Turret() {}
 
 void Turret::ConfigureMotors() {
-  // ========== 1. Turret Azimuth Rotation (Kraken X44) ==========
-  ctre::phoenix6::configs::TalonFXConfiguration rotationConfig{};
-  rotationConfig.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-
-  // Slot 0 Gains for Motion Magic
-  auto& slot0 = rotationConfig.Slot0;
-  slot0.kP = TurretConstants::kRotationP;
-  slot0.kI = TurretConstants::kRotationI;
-  slot0.kD = TurretConstants::kRotationD;
-  slot0.kS = TurretConstants::kRotationS;
-  slot0.kV = TurretConstants::kRotationV;
-  slot0.kA = TurretConstants::kRotationA;
-
-  // Motion Magic Cruise Velocity and Acceleration limits
-  auto& mm = rotationConfig.MotionMagic;
-  mm.MotionMagicCruiseVelocity = units::turns_per_second_t(TurretConstants::kRotationCruiseVelocityRps);
-  mm.MotionMagicAcceleration = units::turns_per_second_squared_t(TurretConstants::kRotationAccelerationRps2);
-  mm.MotionMagicJerk = units::turns_per_second_cubed_t(TurretConstants::kRotationJerkRps3);
-
-  m_rotationMotor.GetConfigurator().Apply(rotationConfig);
-  m_rotationMotor.SetPosition(0_tr);
-
-  // ========== 2. Flywheel Shooter (2x Kraken X60) ==========
+  // ========== 1. Flywheel Shooter (2x Kraken X60) ==========
   ctre::phoenix6::configs::TalonFXConfiguration shooterConfig{};
-  // Coast mode so flywheels spin down naturally without abrupt stress on belts/pulleys
   shooterConfig.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Coast;
 
-  auto& shooterSlot0 = shooterConfig.Slot0;
-  shooterSlot0.kP = TurretConstants::kShooterP;
-  shooterSlot0.kI = TurretConstants::kShooterI;
-  shooterSlot0.kD = TurretConstants::kShooterD;
-  shooterSlot0.kS = TurretConstants::kShooterS;
-  shooterSlot0.kV = TurretConstants::kShooterV;
+  auto& slot0 = shooterConfig.Slot0;
+  slot0.kP = TurretConstants::kShooterP;
+  slot0.kI = TurretConstants::kShooterI;
+  slot0.kD = TurretConstants::kShooterD;
+  slot0.kS = TurretConstants::kShooterS;
+  slot0.kV = TurretConstants::kShooterV;
 
   m_flywheelLeft.GetConfigurator().Apply(shooterConfig);
 
@@ -61,7 +39,7 @@ void Turret::ConfigureMotors() {
       ctre::phoenix6::signals::InvertedValue::Clockwise_Positive;
   m_flywheelRight.GetConfigurator().Apply(shooterConfig);
 
-  // ========== 3. Hood Pitch Servos (REV Smart Servos via ServoHub) ==========
+  // ========== 2. Hood Pitch Servos (REV Smart Servos via ServoHub) ==========
   rev::servohub::ServoChannelConfig servo0Config{rev::servohub::ServoChannel::ChannelId::kChannelId0};
   rev::servohub::ServoChannelConfig servo1Config{rev::servohub::ServoChannel::ChannelId::kChannelId1};
 
@@ -77,39 +55,7 @@ void Turret::ConfigureMotors() {
   SetHoodAngle(units::angle::degree_t(TurretConstants::kHoodMinAngleDeg));
 }
 
-// ========== Azimuth Rotation Controls ==========
-
-void Turret::SetRotationAngle(units::angle::degree_t angle) {
-  double targetDeg = std::clamp(angle.value(), TurretConstants::kTurretMinAngleDeg, TurretConstants::kTurretMaxAngleDeg);
-  m_targetAngleDeg = targetDeg;
-
-  double motorRotations = targetDeg * TurretConstants::kMotorRotationsPerDegree;
-  m_rotationMotor.SetControl(m_motionMagicRequest.WithPosition(units::angle::turn_t(motorRotations)));
-}
-
-void Turret::SetRotationSpeed(double percent) {
-  double currentDeg = GetRotationAngleDegrees();
-
-  // Soft limit protection: prevent driving past mechanical ends
-  if (percent > 0.0 && currentDeg >= TurretConstants::kTurretMaxAngleDeg) {
-    m_rotationMotor.Set(0.0);
-  } else if (percent < 0.0 && currentDeg <= TurretConstants::kTurretMinAngleDeg) {
-    m_rotationMotor.Set(0.0);
-  } else {
-    m_rotationMotor.Set(percent);
-  }
-}
-
-void Turret::ZeroRotation() {
-  m_rotationMotor.SetPosition(0_tr);
-  m_targetAngleDeg = 0.0;
-}
-
-double Turret::GetRotationAngleDegrees() {
-  return m_rotationMotor.GetPosition().GetValueAsDouble() * TurretConstants::kDegreesPerMotorRotation;
-}
-
-// ========== Shooter Flywheel Controls ==========
+// ========== Flywheel Shooter Controls ==========
 
 void Turret::SetShooterRPM(double rpm) {
   m_targetShooterRPM = rpm;
@@ -131,6 +77,7 @@ void Turret::StopShooter() {
   m_targetShooterRPM = 0.0;
   m_flywheelLeft.Set(0.0);
   m_flywheelRight.Set(0.0);
+  SetHoodAngle(units::angle::degree_t(TurretConstants::kHoodMinAngleDeg));
 }
 
 double Turret::GetShooterRPM() {
@@ -147,7 +94,6 @@ void Turret::SetHoodAngle(units::angle::degree_t angle) {
   double clamped = std::clamp(angle.value(), TurretConstants::kHoodMinAngleDeg, TurretConstants::kHoodMaxAngleDeg);
   m_currentHoodAngleDeg = clamped;
 
-  // Linear mapping between min/max angle and pulse width
   double normalized = (clamped - TurretConstants::kHoodMinAngleDeg) /
                       (TurretConstants::kHoodMaxAngleDeg - TurretConstants::kHoodMinAngleDeg);
 
@@ -158,9 +104,8 @@ void Turret::SetHoodAngle(units::angle::degree_t angle) {
 }
 
 void Turret::SetHoodPulseWidth(double pulseWidthUs) {
-  // Servo 0 standard
   m_hoodServo0.SetPulseWidth(pulseWidthUs);
-  // Servo 1 mirrored/opposing for symmetrical dual-sided hood mount
+  // Mirrored channel for symmetrical dual-sided hood mount
   double reversedPw = TurretConstants::kHoodMaxPulseWidthUs -
                       (pulseWidthUs - TurretConstants::kHoodMinPulseWidthUs);
   m_hoodServo1.SetPulseWidth(reversedPw);
@@ -189,23 +134,21 @@ double Turret::CalculateTargetRPM(double distanceMeters) const {
 
 double Turret::CalculateTargetHoodAngle(double distanceMeters) const {
   const auto& table = TurretConstants::kBallisticTable;
-  double angle = table.front().hoodAngleDeg;
-
   if (distanceMeters <= table.front().distanceMeters) {
-    angle = table.front().hoodAngleDeg;
-  } else if (distanceMeters >= table.back().distanceMeters) {
-    angle = table.back().hoodAngleDeg;
-  } else {
-    for (size_t i = 0; i < table.size() - 1; ++i) {
-      if (distanceMeters >= table[i].distanceMeters && distanceMeters <= table[i + 1].distanceMeters) {
-        double t = (distanceMeters - table[i].distanceMeters) /
-                   (table[i + 1].distanceMeters - table[i].distanceMeters);
-        angle = table[i].hoodAngleDeg + t * (table[i + 1].hoodAngleDeg - table[i].hoodAngleDeg);
-        break;
-      }
+    return table.front().hoodAngleDeg;
+  }
+  if (distanceMeters >= table.back().distanceMeters) {
+    return table.back().hoodAngleDeg;
+  }
+
+  for (size_t i = 0; i < table.size() - 1; ++i) {
+    if (distanceMeters >= table[i].distanceMeters && distanceMeters <= table[i + 1].distanceMeters) {
+      double t = (distanceMeters - table[i].distanceMeters) /
+                 (table[i + 1].distanceMeters - table[i].distanceMeters);
+      return table[i].hoodAngleDeg + t * (table[i + 1].hoodAngleDeg - table[i].hoodAngleDeg);
     }
   }
-  return std::clamp(angle, TurretConstants::kHoodMinAngleDeg, TurretConstants::kHoodMaxAngleDeg);
+  return TurretConstants::kHoodMinAngleDeg;
 }
 
 void Turret::SetShooterAndHoodForDistance(double distanceMeters) {
@@ -218,41 +161,42 @@ void Turret::SetShooterAndHoodForDistance(double distanceMeters) {
 void Turret::UpdateAutoTarget(units::length::meter_t robotX,
                               units::length::meter_t robotY,
                               units::angle::degree_t robotHeading) {
-  if (m_targetingMode == TargetingMode::kManual) {
-    return;
-  }
-
-  // 1. Read latest unread pipeline results from PhotonVision
-  std::vector<photon::PhotonPipelineResult> results = m_camera.GetAllUnreadResults();
   bool visionFound = false;
 
-  if (!results.empty()) {
-    const auto& latestResult = results.back();
-    if (latestResult.HasTargets()) {
-      auto bestTarget = latestResult.GetBestTarget();
+  // 1. Try Limelight first
+  if (LimelightHelpers::getTV("")) {
+    visionFound = true;
+    m_hasVisionTarget = true;
+    m_lastVisionTargetTime = frc::Timer::GetFPGATimestamp();
+    m_visionYawDeg = LimelightHelpers::getTX("");
+    m_visionPitchDeg = LimelightHelpers::getTY("");
+
+    double totalPitchRad = (TurretConstants::kCameraMountPitchDeg + m_visionPitchDeg) * (M_PI / 180.0);
+    double deltaH = TurretConstants::kHubTargetHeightMeters - TurretConstants::kCameraMountHeightMeters;
+    if (totalPitchRad > 0.05 && deltaH > 0.0) {
+      m_targetDistanceMeters = deltaH / std::tan(totalPitchRad);
+    }
+  } else {
+    // 2. Fall back to PhotonVision
+    auto results = m_camera.GetAllUnreadResults();
+    if (!results.empty() && results.back().HasTargets()) {
+      auto bestTarget = results.back().GetBestTarget();
       visionFound = true;
-      m_lastVisionTargetTime = frc::Timer::GetFPGATimestamp();
       m_hasVisionTarget = true;
+      m_lastVisionTargetTime = frc::Timer::GetFPGATimestamp();
       m_visionYawDeg = bestTarget.GetYaw();
       m_visionPitchDeg = bestTarget.GetPitch();
       m_targetFiducialId = bestTarget.GetFiducialId();
 
-      // Robust ground distance using pitch trigonometry
       double totalPitchRad = (TurretConstants::kCameraMountPitchDeg + m_visionPitchDeg) * (M_PI / 180.0);
       double deltaH = TurretConstants::kHubTargetHeightMeters - TurretConstants::kCameraMountHeightMeters;
       if (totalPitchRad > 0.05 && deltaH > 0.0) {
         m_targetDistanceMeters = deltaH / std::tan(totalPitchRad);
-      } else {
-        auto transform = bestTarget.GetBestCameraToTarget();
-        double dist3d = std::hypot(transform.X().value(), transform.Y().value());
-        if (dist3d > 0.4) {
-          m_targetDistanceMeters = dist3d;
-        }
       }
     }
   }
 
-  // Grace period: maintain vision lock for 150ms across frame drops to prevent 50Hz chatter
+  // Grace period across frame drops (150ms)
   if (!visionFound) {
     units::time::second_t now = frc::Timer::GetFPGATimestamp();
     if (now - m_lastVisionTargetTime > 0.15_s) {
@@ -260,135 +204,90 @@ void Turret::UpdateAutoTarget(units::length::meter_t robotX,
     }
   }
 
-  // 2. Closed-loop control selection
-  if (m_hasVisionTarget && (m_targetingMode == TargetingMode::kAuto || m_targetingMode == TargetingMode::kVisionOnly)) {
-    // Dynamic Turret Tolerance calculation (OnyxTronix #2231 model)
-    double effectiveDist = std::max(m_targetDistanceMeters, 0.5);
-    double apparentRadiusDeg = std::atan2(TurretConstants::kHubRadiusMeters, effectiveDist) * (180.0 / M_PI);
-    m_dynamicToleranceDeg = std::clamp(
-        apparentRadiusDeg * TurretConstants::kToleranceMarginRatio,
-        TurretConstants::kMinToleranceDeg,
-        TurretConstants::kMaxToleranceDeg);
+  // 3. Odometry Target Calculation (for search & fallback)
+  double hubX = m_isRedAlliance ? TurretConstants::kRedHubX : TurretConstants::kBlueHubX;
+  double hubY = m_isRedAlliance ? TurretConstants::kRedHubY : TurretConstants::kBlueHubY;
+  double dx = hubX - robotX.value();
+  double dy = hubY - robotY.value();
+  double odoDist = std::hypot(dx, dy);
 
-    // Target locked if absolute camera yaw is within dynamic tolerance window
-    m_targetLocked = (std::abs(m_visionYawDeg) <= m_dynamicToleranceDeg);
+  double fieldAngleDeg = std::atan2(dy, dx) * (180.0 / M_PI);
+  // Chassis heading required to aim the fixed shooter (accounting for its mount angle to the left)
+  m_odometryTargetHeadingDeg = std::remainder(fieldAngleDeg - TurretConstants::kShooterMountYawOffsetDeg, 360.0);
 
-    // Camera is mounted directly on turret: adjust current azimuth by yaw offset
-    double currentAngle = GetRotationAngleDegrees();
-    double targetTurretDeg = currentAngle + (m_visionYawDeg * TurretConstants::kVisionYawSign) -
-                             TurretConstants::kCameraMountYawOffsetDeg;
+  if (!m_hasVisionTarget) {
+    m_targetDistanceMeters = odoDist;
+  }
 
-    SetRotationAngle(units::angle::degree_t(targetTurretDeg));
+  // 4. Dynamic Tolerance Calculation
+  double effectiveDist = std::max(m_targetDistanceMeters, 0.5);
+  double apparentRadiusDeg = std::atan2(TurretConstants::kHubRadiusMeters, effectiveDist) * (180.0 / M_PI);
+  m_dynamicToleranceDeg = std::clamp(
+      apparentRadiusDeg * TurretConstants::kToleranceMarginRatio,
+      TurretConstants::kMinToleranceDeg,
+      TurretConstants::kMaxToleranceDeg);
 
-    // NOTE: Flywheel RPM and hood angle are handled by Shoot(), not here.
-  } else if ((!m_hasVisionTarget && m_targetingMode == TargetingMode::kAuto) ||
-             m_targetingMode == TargetingMode::kOdometryOnly) {
-    // Fallback / Pre-alignment using robot field odometry and known Hub pose
-    double hubX = TurretConstants::kBlueHubX;
-    double hubY = TurretConstants::kBlueHubY;
-    if (m_isRedAlliance) {
-      hubX = TurretConstants::kRedHubX;
-      hubY = TurretConstants::kRedHubY;
-    }
-
-    // Account for robot heading and turret physical offset on robot frame
-    double headingRad = robotHeading.value() * (M_PI / 180.0);
-    double turretFieldX = robotX.value() +
-        (TurretConstants::kTurretOffsetX * std::cos(headingRad) -
-         TurretConstants::kTurretOffsetY * std::sin(headingRad));
-    double turretFieldY = robotY.value() +
-        (TurretConstants::kTurretOffsetX * std::sin(headingRad) +
-         TurretConstants::kTurretOffsetY * std::cos(headingRad));
-
-    double dx = hubX - turretFieldX;
-    double dy = hubY - turretFieldY;
-    double dist = std::hypot(dx, dy);
-    m_targetDistanceMeters = dist;
-
-    // Field-relative angle to Hub
-    double fieldAngleDeg = std::atan2(dy, dx) * (180.0 / M_PI);
-
-    // Robot-relative target angle
-    double robotRelativeAngleDeg = std::remainder(fieldAngleDeg - robotHeading.value(), 360.0);
-    if (robotRelativeAngleDeg < 0.0) {
-      robotRelativeAngleDeg += 360.0;
-    }
-
-    double effectiveDist = std::max(dist, 0.5);
-    double apparentRadiusDeg = std::atan2(TurretConstants::kHubRadiusMeters, effectiveDist) * (180.0 / M_PI);
-    m_dynamicToleranceDeg = std::clamp(
-        apparentRadiusDeg * TurretConstants::kToleranceMarginRatio,
-        TurretConstants::kMinToleranceDeg,
-        TurretConstants::kMaxToleranceDeg);
-
-    SetRotationAngle(units::angle::degree_t(robotRelativeAngleDeg));
-
-    double angleError = std::abs(std::remainder(GetRotationAngleDegrees() - robotRelativeAngleDeg, 360.0));
-    m_targetLocked = (angleError <= m_dynamicToleranceDeg);
-
-    // NOTE: Flywheel RPM and hood angle are handled by Shoot(), not here.
+  // 5. Target Lock State
+  if (m_hasVisionTarget) {
+    double aimError = std::abs(m_visionYawDeg - TurretConstants::kShooterMountYawOffsetDeg);
+    m_targetLocked = (aimError <= m_dynamicToleranceDeg);
   } else {
-    m_targetLocked = false;
+    double headingError = std::abs(std::remainder(m_odometryTargetHeadingDeg - robotHeading.value(), 360.0));
+    m_targetLocked = (headingError <= m_dynamicToleranceDeg);
   }
 }
 
-// ========== Telemetry ==========
+double Turret::CalculateAimRotation(double currentGyroYawDeg) {
+  if (m_hasVisionTarget) {
+    // Optical tracking: in Limelight, positive TX means target is to the RIGHT.
+    // In our CCW+ convention, turning right requires negative rotation.
+    double error = m_visionYawDeg - TurretConstants::kShooterMountYawOffsetDeg;
+    if (std::abs(error) < TurretConstants::kAimToleranceDeg) {
+      return 0.0;
+    }
 
-void Turret::Periodic() {
-  frc::SmartDashboard::PutNumber("Turret/Angle Deg", GetRotationAngleDegrees());
-  frc::SmartDashboard::PutNumber("Turret/Target Angle Deg", m_targetAngleDeg);
-  frc::SmartDashboard::PutNumber("Turret/Shooter RPM", GetShooterRPM());
-  frc::SmartDashboard::PutNumber("Turret/Target Shooter RPM", m_targetShooterRPM);
-  frc::SmartDashboard::PutNumber("Turret/Hood Angle Deg", m_currentHoodAngleDeg);
+    double dErr = (error - m_lastAimErrorDeg) / 0.02;
+    m_lastAimErrorDeg = error;
 
-  // Vision & Auto-Targeting Telemetry
-  frc::SmartDashboard::PutBoolean("Turret/HasTarget", m_hasVisionTarget);
-  frc::SmartDashboard::PutBoolean("Turret/TargetLocked", m_targetLocked);
-  frc::SmartDashboard::PutNumber("Turret/VisionYaw Deg", m_visionYawDeg);
-  frc::SmartDashboard::PutNumber("Turret/VisionPitch Deg", m_visionPitchDeg);
-  frc::SmartDashboard::PutNumber("Turret/Distance Meters", m_targetDistanceMeters);
-  frc::SmartDashboard::PutNumber("Turret/DynamicTolerance Deg", m_dynamicToleranceDeg);
-  frc::SmartDashboard::PutNumber("Turret/Target Tag ID", m_targetFiducialId);
+    double out = -TurretConstants::kAimP_Vision * error - TurretConstants::kAimD_Vision * dErr;
+    out += std::copysign(TurretConstants::kAimStatic_Vision, -error);
+    return std::clamp(out, -TurretConstants::kAimMaxRotOutput, TurretConstants::kAimMaxRotOutput);
+  } else {
+    // Odometry fallback: turn robot to the calculated field angle to the Hub
+    double headingError = std::remainder(m_odometryTargetHeadingDeg - currentGyroYawDeg, 360.0);
+    if (std::abs(headingError) < TurretConstants::kAimToleranceDeg) {
+      return 0.0;
+    }
 
-  std::string modeStr = "Auto";
-  switch (m_targetingMode) {
-    case TargetingMode::kManual: modeStr = "Manual"; break;
-    case TargetingMode::kVisionOnly: modeStr = "VisionOnly"; break;
-    case TargetingMode::kOdometryOnly: modeStr = "OdometryOnly"; break;
-    case TargetingMode::kAuto: modeStr = "Auto"; break;
+    double out = TurretConstants::kAimP_Odometry * headingError;
+    out += std::copysign(TurretConstants::kAimStatic_Vision, headingError);
+    return std::clamp(out, -TurretConstants::kAimMaxRotOutput, TurretConstants::kAimMaxRotOutput);
   }
-  frc::SmartDashboard::PutString("Turret/TargetingMode", modeStr);
 }
-
-// ========== Alliance Color ==========
-
-void Turret::SetAllianceRed(bool isRed) {
-  m_isRedAlliance = isRed;
-}
-
-// ========== Shoot Control (Left Trigger) ==========
 
 void Turret::Shoot(double triggerValue) {
-  // Hold left trigger to shoot: spin up flywheels + raise hood
-  // Release trigger: stop flywheels + lower hood all the way down
   if (triggerValue > 0.15) {
-    // Spin up shooter and raise hood based on distance to target
     SetShooterAndHoodForDistance(m_targetDistanceMeters);
   } else {
-    // Stop shooter and lower hood to minimum (rest position)
     StopShooter();
-    SetHoodAngle(units::angle::degree_t(TurretConstants::kHoodMinAngleDeg));
   }
+}
+
+void Turret::Periodic() {
+  frc::SmartDashboard::PutNumber("Shooter/Shooter RPM", GetShooterRPM());
+  frc::SmartDashboard::PutNumber("Shooter/Target Shooter RPM", m_targetShooterRPM);
+  frc::SmartDashboard::PutNumber("Shooter/Hood Angle Deg", m_currentHoodAngleDeg);
+  frc::SmartDashboard::PutBoolean("Shooter/HasVisionTarget", m_hasVisionTarget);
+  frc::SmartDashboard::PutBoolean("Shooter/TargetLocked", m_targetLocked);
+  frc::SmartDashboard::PutBoolean("Shooter/ReadyToShoot", IsReadyToShoot());
+  frc::SmartDashboard::PutNumber("Shooter/VisionYaw Deg", m_visionYawDeg);
+  frc::SmartDashboard::PutNumber("Shooter/Distance Meters", m_targetDistanceMeters);
+  frc::SmartDashboard::PutNumber("Shooter/DynamicTolerance Deg", m_dynamicToleranceDeg);
+  frc::SmartDashboard::PutNumber("Shooter/MountYawOffsetDeg", TurretConstants::kShooterMountYawOffsetDeg);
 }
 
 void Turret::UpdateSim(units::time::second_t dt) {
-  // Update simulated turret rotation towards target angle
-  m_rotationMotor.GetSimState().SetRawRotorPosition(
-      units::angle::turn_t(m_targetAngleDeg * TurretConstants::kMotorRotationsPerDegree));
-
-  // Update simulated flywheel velocity
   double rps = m_targetShooterRPM / 60.0;
   m_flywheelLeft.GetSimState().SetRotorVelocity(units::angular_velocity::turns_per_second_t(rps));
   m_flywheelRight.GetSimState().SetRotorVelocity(units::angular_velocity::turns_per_second_t(-rps));
 }
-
