@@ -11,6 +11,7 @@
 
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include <numbers>
 
 #ifdef GetObject
 #undef GetObject
@@ -21,7 +22,7 @@ Robot::Robot() {
   m_chooser.AddOption(kAutoNameCustom, kAutoNameCustom);
   frc::SmartDashboard::PutData("Auto Modes", &m_chooser);
 
-  // Drive mode chooser
+  // Drive mode chooser - defaults to FieldCentric as requested
   m_driveModeChooser.SetDefaultOption("FieldCentric", "FieldCentric");
   m_driveModeChooser.AddOption("RobotCentric", "RobotCentric");
   frc::SmartDashboard::PutData("Drive Mode", &m_driveModeChooser);
@@ -53,10 +54,10 @@ Robot::Robot() {
   m_teamColorChooser.AddOption("Red", "Red");
   frc::SmartDashboard::PutData("Team Color", &m_teamColorChooser);
 
-  // Controller type chooser - Default to PS5 DualSense controller
-  m_controllerChooser.SetDefaultOption("PS5", "PS5");
+  // Controller type chooser - AutoDetect so Xbox axes aren't read with the PS5 map
+  m_controllerChooser.SetDefaultOption("AutoDetect", "AutoDetect");
+  m_controllerChooser.AddOption("PS5", "PS5");
   m_controllerChooser.AddOption("Xbox", "Xbox");
-  m_controllerChooser.AddOption("AutoDetect", "AutoDetect");
   frc::SmartDashboard::PutData("Controller Type", &m_controllerChooser);
 
   // Pump mode toggle
@@ -68,13 +69,17 @@ void Robot::Intake() {
 }
 
 void Robot::RobotPeriodic() {
-  // Reset gyro heading: Back button (Xbox) or Create / Touchpad (PS5)
-  if (GetDriverResetGyroPressed()) {
+  // Reset gyro heading: 'A' button (Xbox) or 'Cross' (PS5)
+  bool resetPressed = GetDriverResetGyroPressed();
+  if (resetPressed) {
     m_pigeon.Reset();
+    m_swerve.ResetOdometry();
+    m_swerve.ResetRunaway();
   }
-  GyroValue = -std::fmod(m_pigeon.GetYaw().GetValueAsDouble(), 360.0);
+  frc::SmartDashboard::PutBoolean("Driver/ResetButtonPressed", resetPressed);
+  // Pigeon2 yaw is CCW-positive, which matches the drivetrain convention directly.
+  GyroValue = m_pigeon.GetYaw().GetValueAsDouble();
   frc::SmartDashboard::PutNumber("Gyro Heading", GyroValue);
-  frc::SmartDashboard::PutNumber("GyroYawDeg", m_pigeon.GetYaw().GetValueAsDouble());
   frc::SmartDashboard::PutString("Controller/ActiveType", IsPS5() ? "PS5 DualSense" : "Xbox");
 
   // Non-swerve telemetry commented out (swerve-only mode)
@@ -87,9 +92,8 @@ void Robot::RobotPeriodic() {
   m_turret.Periodic();
   */
 
-  // Display odometry on SmartDashboard
-  frc::SmartDashboard::PutNumber("Odometry/FusedX", m_swerve.positionFWDField.value());
-  frc::SmartDashboard::PutNumber("Odometry/FusedY", m_swerve.positionSTRField.value());
+  // Swerve telemetry + odometry (every mode)
+  m_swerve.Periodic(GyroValue * std::numbers::pi / 180.0);
 }
 
 void Robot::AutonomousInit() {
@@ -102,8 +106,10 @@ void Robot::AutonomousPeriodic() {
 }
 
 void Robot::TeleopInit() {
-  // Always ensure swerve motor configs are applied upon entering Teleop
-  m_swerve.ConfigureMotors();
+  if (!m_swerve.AreConfigsApplied()) {
+    m_swerve.ConfigureMotors();
+  }
+  m_swerve.ResetRunaway();
 }
 
 void Robot::TeleopPeriodic() {
@@ -119,10 +125,26 @@ void Robot::TeleopPeriodic() {
   if (triggerL < 0.05) triggerL = 0.0;
   if (triggerR < 0.05) triggerR = 0.0;
 
-  // Apply deadzones (forward on controller stick is negative Y, so invert rawy)
-  x = (std::abs(rawx) >= DrivetrainConstants::xdeadz) ? rawx : 0.0;
-  y = (std::abs(rawy) >= DrivetrainConstants::ydeadz) ? -rawy : 0.0;
-  x2 = (std::abs(rawx2) >= DrivetrainConstants::x2deadz) ? rawx2 : 0.0;
+  // Deadband that rescales so output starts at 0 right after the deadband.
+  auto deadband = [](double v) {
+    double d = DrivetrainConstants::kDeadband;
+    if (std::abs(v) < d) return 0.0;
+    return std::copysign((std::abs(v) - d) / (1.0 - d), v);
+  };
+
+  // Joystick: up = -Y, right = +X. Drivetrain wants +forward, +left, +CCW.
+  double forward = deadband(-rawy);
+  double left = deadband(-rawx);
+  double rotCCW = deadband(-rawx2);
+  y = forward;
+  x = left;
+  x2 = rotCCW;
+
+  // Speed: normal 50%, right trigger -> boost up to 100%, left trigger -> slow to 20%.
+  double scale = DrivetrainConstants::kDriveNormalScale +
+                 triggerR * (DrivetrainConstants::kDriveBoostScale - DrivetrainConstants::kDriveNormalScale) +
+                 triggerL * (DrivetrainConstants::kDriveSlowScale - DrivetrainConstants::kDriveNormalScale);
+  scale = std::clamp(scale, DrivetrainConstants::kDriveSlowScale, DrivetrainConstants::kDriveBoostScale);
 
   FieldCentric = (m_driveModeChooser.GetSelected() == "FieldCentric");
 
@@ -135,12 +157,13 @@ void Robot::TeleopPeriodic() {
   frc::SmartDashboard::PutNumber("Driver/RawRightX", rawx2);
   frc::SmartDashboard::PutNumber("Driver/RawL2", triggerL);
   frc::SmartDashboard::PutNumber("Driver/RawR2", triggerR);
-  frc::SmartDashboard::PutNumber("Driver/Cmd_X", x);
-  frc::SmartDashboard::PutNumber("Driver/Cmd_Y", y);
-  frc::SmartDashboard::PutNumber("Driver/Cmd_ROT", x2);
+  frc::SmartDashboard::PutNumber("Driver/Cmd_Forward", forward);
+  frc::SmartDashboard::PutNumber("Driver/Cmd_Left", left);
+  frc::SmartDashboard::PutNumber("Driver/Cmd_RotCCW", rotCCW);
+  frc::SmartDashboard::PutNumber("Driver/SpeedScale", scale);
   frc::SmartDashboard::PutBoolean("Driver/PortConnected", frc::DriverStation::IsJoystickConnected(activePort));
 
-  m_swerve.Update(x, y, x2, GyroValue, triggerL, triggerR, FieldCentric);
+  m_swerve.Drive(forward, left, rotCCW, scale, GyroValue * std::numbers::pi / 180.0, FieldCentric);
 
   // All other mechanisms (slide, intake, turret, indexer, feeder) commented out (swerve-only mode)
   /*
@@ -208,16 +231,26 @@ void Robot::TeleopPeriodic() {
 }
 
 void Robot::DisabledInit() {
-  m_swerve.DisabledInit();
+  m_swerve.Stop();
 }
 
 void Robot::DisabledPeriodic() {
-  m_swerve.DisabledPeriodic();
+  // Retry configs once per second until every motor accepts them.
+  static int loops = 0;
+  if (!m_swerve.AreConfigsApplied() && (++loops % 50 == 0)) {
+    m_swerve.ConfigureMotors();
+  }
 }
 
-void Robot::TestInit() {}
+// TEST MODE = steer phase check (robot on blocks!). Every module's
+// "Swerve/<mod>/SteerPhaseOK" must read true. See DrivetrainConstants.h.
+void Robot::TestInit() {
+  m_swerve.ResetRunaway();
+}
 
-void Robot::TestPeriodic() {}
+void Robot::TestPeriodic() {
+  m_swerve.TestPhase();
+}
 
 void Robot::SimulationInit() {}
 
@@ -225,11 +258,11 @@ void Robot::SimulationPeriodic() {
   using namespace units::literals;
 
   // Step drivetrain swerve module simulation physics
-  m_swerve.UpdateSim(20_ms);
+  m_swerve.UpdateSim(0.02);
 
-  // Update simulated Pigeon2 gyro yaw based on rotation input
+  // Update simulated Pigeon2 gyro yaw based on rotation input (CCW+)
   if (std::abs(x2) > 0.05) {
-    m_pigeon.GetSimState().AddYaw(units::angle::degree_t(-x2 * 360.0 * 0.02));
+    m_pigeon.GetSimState().AddYaw(units::angle::degree_t(x2 * 360.0 * 0.02));
   }
 
   // Mechanism simulation commented out (swerve-only mode)
@@ -350,15 +383,27 @@ bool Robot::GetDriverResetGyroPressed() {
   int port = GetDriverPort();
   if (IsPS5()) {
     if (port == 0) {
-      return m_ps5Controller0.GetCreateButtonPressed() || m_ps5Controller0.GetTouchpadButtonPressed();
+      return m_ps5Controller0.GetCrossButtonPressed() ||
+             m_ps5Controller0.GetCreateButtonPressed() ||
+             m_ps5Controller0.GetTouchpadButtonPressed();
     }
     if (port == 1) {
-      return m_ps5Controller1.GetCreateButtonPressed() || m_ps5Controller1.GetTouchpadButtonPressed();
+      return m_ps5Controller1.GetCrossButtonPressed() ||
+             m_ps5Controller1.GetCreateButtonPressed() ||
+             m_ps5Controller1.GetTouchpadButtonPressed();
     }
-    return frc::PS5Controller{port}.GetCreateButtonPressed() ||
+    return frc::PS5Controller{port}.GetCrossButtonPressed() ||
+           frc::PS5Controller{port}.GetCreateButtonPressed() ||
            frc::PS5Controller{port}.GetTouchpadButtonPressed();
   }
-  return (port == 0) ? m_xboxController0.GetBackButtonPressed() : m_xboxController1.GetBackButtonPressed();
+  // Xbox: 'A' button resets gyro (Back button also supported as fallback)
+  if (port == 0) {
+    return m_xboxController0.GetAButtonPressed() || m_xboxController0.GetBackButtonPressed();
+  }
+  if (port == 1) {
+    return m_xboxController1.GetAButtonPressed() || m_xboxController1.GetBackButtonPressed();
+  }
+  return frc::XboxController{port}.GetAButtonPressed() || frc::XboxController{port}.GetBackButtonPressed();
 }
 
 int Robot::GetDriverPOV() const {
