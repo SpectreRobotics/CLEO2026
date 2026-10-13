@@ -51,6 +51,12 @@ void Turret::ConfigureMotors() {
   hubConfig.Apply(rev::servohub::ServoChannel::ChannelId::kChannelId1, servo1Config);
   m_servoHub.Configure(hubConfig, rev::ResetMode::kNoResetSafeParameters);
 
+  // Explicitly power and enable both servo channels on REV ServoHub
+  m_hoodServo0.SetPowered(true);
+  m_hoodServo0.SetEnabled(true);
+  m_hoodServo1.SetPowered(true);
+  m_hoodServo1.SetEnabled(true);
+
   // Default hood to lower rest position
   SetHoodAngle(units::angle::degree_t(TurretConstants::kHoodMinAngleDeg));
 }
@@ -104,10 +110,12 @@ void Turret::SetHoodAngle(units::angle::degree_t angle) {
 }
 
 void Turret::SetHoodPulseWidth(double pulseWidthUs) {
-  m_hoodServo0.SetPulseWidth(pulseWidthUs);
+  int pwInt = std::clamp(static_cast<int>(std::round(pulseWidthUs)), 500, 2500);
+  m_hoodServo0.SetPulseWidth(pwInt);
   // Mirrored channel for symmetrical dual-sided hood mount
-  double reversedPw = TurretConstants::kHoodMaxPulseWidthUs -
-                      (pulseWidthUs - TurretConstants::kHoodMinPulseWidthUs);
+  int reversedPw = static_cast<int>(std::round(TurretConstants::kHoodMaxPulseWidthUs -
+                      (pulseWidthUs - TurretConstants::kHoodMinPulseWidthUs)));
+  reversedPw = std::clamp(reversedPw, 500, 2500);
   m_hoodServo1.SetPulseWidth(reversedPw);
 }
 
@@ -228,8 +236,12 @@ void Turret::UpdateAutoTarget(units::length::meter_t robotX,
       TurretConstants::kMaxToleranceDeg);
 
   // 5. Target Lock State
+  double targetTx = TurretConstants::kVisionCalibratedInLimelight
+      ? 0.0
+      : -TurretConstants::kShooterMountYawOffsetDeg;
+
   if (m_hasVisionTarget) {
-    double aimError = std::abs(m_visionYawDeg - TurretConstants::kShooterMountYawOffsetDeg);
+    double aimError = std::abs(m_visionYawDeg - targetTx);
     m_targetLocked = (aimError <= m_dynamicToleranceDeg);
   } else {
     double headingError = std::abs(std::remainder(m_odometryTargetHeadingDeg - robotHeading.value(), 360.0));
@@ -241,7 +253,10 @@ double Turret::CalculateAimRotation(double currentGyroYawDeg) {
   if (m_hasVisionTarget) {
     // Optical tracking: in Limelight, positive TX means target is to the RIGHT.
     // In our CCW+ convention, turning right requires negative rotation.
-    double error = m_visionYawDeg - TurretConstants::kShooterMountYawOffsetDeg;
+    double targetTx = TurretConstants::kVisionCalibratedInLimelight
+        ? 0.0
+        : -TurretConstants::kShooterMountYawOffsetDeg;
+    double error = m_visionYawDeg - targetTx;
     if (std::abs(error) < TurretConstants::kAimToleranceDeg) {
       return 0.0;
     }
@@ -277,6 +292,10 @@ void Turret::Periodic() {
   frc::SmartDashboard::PutNumber("Shooter/Shooter RPM", GetShooterRPM());
   frc::SmartDashboard::PutNumber("Shooter/Target Shooter RPM", m_targetShooterRPM);
   frc::SmartDashboard::PutNumber("Shooter/Hood Angle Deg", m_currentHoodAngleDeg);
+  frc::SmartDashboard::PutNumber("Shooter/Servo0_PulseUs", m_hoodServo0.GetPulseWidth());
+  frc::SmartDashboard::PutNumber("Shooter/Servo1_PulseUs", m_hoodServo1.GetPulseWidth());
+  frc::SmartDashboard::PutBoolean("Shooter/Servo0_Enabled", m_hoodServo0.IsEnabled());
+  frc::SmartDashboard::PutNumber("Shooter/Servo0_CurrentAmps", m_hoodServo0.GetCurrent());
   frc::SmartDashboard::PutBoolean("Shooter/HasVisionTarget", m_hasVisionTarget);
   frc::SmartDashboard::PutBoolean("Shooter/TargetLocked", m_targetLocked);
   frc::SmartDashboard::PutBoolean("Shooter/ReadyToShoot", IsReadyToShoot());
@@ -284,6 +303,7 @@ void Turret::Periodic() {
   frc::SmartDashboard::PutNumber("Shooter/Distance Meters", m_targetDistanceMeters);
   frc::SmartDashboard::PutNumber("Shooter/DynamicTolerance Deg", m_dynamicToleranceDeg);
   frc::SmartDashboard::PutNumber("Shooter/MountYawOffsetDeg", TurretConstants::kShooterMountYawOffsetDeg);
+  frc::SmartDashboard::PutNumber("Shooter/OdometryTargetHeading", m_odometryTargetHeadingDeg);
 }
 
 void Turret::UpdateSim(units::time::second_t dt) {

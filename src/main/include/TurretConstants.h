@@ -27,10 +27,19 @@ namespace TurretConstants {
   // ========== Fixed Shooter Chassis Orientation ==========
   /**
    * Angle that the fixed shooter points relative to the robot's front (+X).
-   * Positive = points to the LEFT (CCW), Negative = points to the RIGHT (CW).
-   * Update this with the exact measured degrees once available!
+   * Positive = points to the LEFT (+7.0 deg CCW), Negative = points to the RIGHT (CW).
    */
-  constexpr double kShooterMountYawOffsetDeg = 0.0;
+  constexpr double kShooterMountYawOffsetDeg = 7.0;
+
+  /**
+   * Limelight Crosshair Calibration Mode:
+   * - false (Default / Software Math Mode): Limelight crosshair is centered at (0, 0)
+   *   along the robot's forward centerline. Code automatically aims chassis so
+   *   Limelight tx settles at -7.0 deg (matching the 7 deg left shooter offset).
+   * - true (Limelight UI Mode): Crosshair was calibrated inside Limelight Web UI
+   *   directly along the shooter's barrel line. Code aims chassis so Limelight tx settles at 0.0 deg.
+   */
+  constexpr bool kVisionCalibratedInLimelight = false;
 
   /// Flywheel gear ratio (motor rotations per flywheel rotation, 1.0 = direct drive)
   constexpr double kShooterGearRatio = 1.0;
