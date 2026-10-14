@@ -63,9 +63,10 @@ class Robot : public frc::TimedRobot {
 
   // ========== Swerve Drivetrain ==========
   Drivetrain m_swerve;
-  ctre::phoenix6::hardware::Pigeon2 m_pigeon{2};
+  ctre::phoenix6::hardware::Pigeon2 m_pigeon{DrivetrainConstants::kPigeonId,
+                                             ctre::phoenix6::CANBus{DrivetrainConstants::kCanBus}};
 
-  // Drive Control Variables
+  // Drive Control Variables (ChimiSwerve convention: +X right, +Y forward, +X2 CW, Gyro CW+)
   double GyroValue = 0.0;
   double x = 0.0;
   double y = 0.0;

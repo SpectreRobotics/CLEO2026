@@ -4,148 +4,124 @@
 #include <algorithm>
 
 #include "gtest/gtest.h"
+#include "Drivetrain.h"
 #include "DrivetrainConstants.h"
 
-// Test Swerve Angle Wrapping to [-0.5, 0.5) turns
-TEST(SwerveMathTest, AngleWrapping) {
-  auto wrapTurns = [](double t) {
-    return t - std::floor(t + 0.5);
-  };
-
-  EXPECT_NEAR(wrapTurns(0.0), 0.0, 1e-6);
-  EXPECT_NEAR(wrapTurns(0.25), 0.25, 1e-6);
-  EXPECT_NEAR(wrapTurns(0.5), -0.5, 1e-6);
-  EXPECT_NEAR(wrapTurns(0.75), -0.25, 1e-6);
-  EXPECT_NEAR(wrapTurns(1.0), 0.0, 1e-6);
-  EXPECT_NEAR(wrapTurns(-0.25), -0.25, 1e-6);
-  EXPECT_NEAR(wrapTurns(-0.75), 0.25, 1e-6);
-  EXPECT_NEAR(wrapTurns(1.25), 0.25, 1e-6);
-}
-
-// Test Swerve Module Direction Optimization (never turn > 90 deg)
-TEST(SwerveMathTest, ModuleOptimization) {
-  auto wrapTurns = [](double t) {
-    return t - std::floor(t + 0.5);
-  };
-
-  auto optimize = [&](double targetTurns, double currentTurns, double& outSpeed) {
-    double delta = wrapTurns(targetTurns - currentTurns);
-    if (std::abs(delta) > 0.25) {
-      targetTurns = wrapTurns(targetTurns + 0.5);
-      outSpeed = -outSpeed;
-    }
-    return targetTurns;
-  };
-
-  // Case 1: Wheel at 0, target 30 deg (0.0833 turns) -> no reversal needed
+// Test ChimiOptimizeAzimuth (90° flip detection and cosine scaling)
+TEST(ChimiSwerveMathTest, OptimizeAzimuthShortestPath) {
+  // Case 1: Wheel at 0 turns, target angle is 0 rad (forward)
   double speed1 = 1.0;
-  double optTarget1 = optimize(30.0 / 360.0, 0.0, speed1);
-  EXPECT_NEAR(optTarget1, 30.0 / 360.0, 1e-4);
-  EXPECT_DOUBLE_EQ(speed1, 1.0);
+  double targetTurns1 = Drivetrain::ChimiOptimizeAzimuth(0.0, 0.0, speed1);
+  EXPECT_NEAR(targetTurns1, 0.0, 1e-5);
+  EXPECT_NEAR(speed1, 1.0, 1e-5);
 
-  // Case 2: Wheel at 0, target 170 deg (0.4722 turns) -> should flip target by 180 and reverse speed
+  // Case 2: Target is 30° CW (+pi/6 rad). Kinematic is CW+, sensor is CCW+ -> target is -1/12 turns.
   double speed2 = 1.0;
-  double optTarget2 = optimize(170.0 / 360.0, 0.0, speed2);
-  EXPECT_NEAR(optTarget2, -10.0 / 360.0, 1e-4);
-  EXPECT_DOUBLE_EQ(speed2, -1.0);
+  double targetTurns2 = Drivetrain::ChimiOptimizeAzimuth(M_PI / 6.0, 0.0, speed2);
+  EXPECT_NEAR(targetTurns2, -1.0 / 12.0, 1e-4);
+  EXPECT_GT(speed2, 0.8); // Cosine of small angle should remain high
 
-  // Case 3: Wheel at 90 deg (0.25 turns), target -80 deg (-0.222 turns) -> delta is 170 deg -> reverse
-  double speed3 = 0.8;
-  double optTarget3 = optimize(-80.0 / 360.0, 0.25, speed3);
-  EXPECT_NEAR(optTarget3, 100.0 / 360.0, 1e-4);
-  EXPECT_DOUBLE_EQ(speed3, -0.8);
+  // Case 3: Target is 170° away (>90°). Wheel should reverse and flip setpoint.
+  double speed3 = 1.0;
+  double targetRad3 = 170.0 * M_PI / 180.0;
+  double targetTurns3 = Drivetrain::ChimiOptimizeAzimuth(targetRad3, 0.0, speed3);
+  // Target was ~ -0.472 turns -> flipped by 0.5 turns gives ~ +0.0278 turns
+  EXPECT_LT(std::abs(targetTurns3), 0.25);
+  EXPECT_LT(speed3, 0.0); // Negated drive speed
 }
 
-// Test Rescaled Deadband Function
-TEST(SwerveMathTest, DeadbandRescaling) {
-  auto deadband = [](double v) {
-    double d = DrivetrainConstants::kDeadband; // 0.1
-    if (std::abs(v) < d) return 0.0;
-    return std::copysign((std::abs(v) - d) / (1.0 - d), v);
+// Test Rescaled Deadband
+TEST(ChimiSwerveMathTest, DeadbandRescaling) {
+  auto deadband = [](double val, double d) {
+    if (std::abs(val) < d) return 0.0;
+    return std::copysign((std::abs(val) - d) / (1.0 - d), val);
   };
 
-  EXPECT_DOUBLE_EQ(deadband(0.0), 0.0);
-  EXPECT_DOUBLE_EQ(deadband(0.05), 0.0);
-  EXPECT_DOUBLE_EQ(deadband(-0.09), 0.0);
-  EXPECT_NEAR(deadband(0.1), 0.0, 1e-6);
-  EXPECT_NEAR(deadband(1.0), 1.0, 1e-6);
-  EXPECT_NEAR(deadband(-1.0), -1.0, 1e-6);
-  EXPECT_NEAR(deadband(0.55), 0.5, 1e-6);
+  double d = DrivetrainConstants::xdeadz; // 0.1
+  EXPECT_DOUBLE_EQ(deadband(0.0, d), 0.0);
+  EXPECT_DOUBLE_EQ(deadband(0.05, d), 0.0);
+  EXPECT_DOUBLE_EQ(deadband(-0.09, d), 0.0);
+  EXPECT_NEAR(deadband(0.1, d), 0.0, 1e-6);
+  EXPECT_NEAR(deadband(1.0, d), 1.0, 1e-6);
+  EXPECT_NEAR(deadband(-1.0, d), -1.0, 1e-6);
+  EXPECT_NEAR(deadband(0.55, d), 0.5, 1e-6);
 }
 
-// Test Swerve Odometry Integration Math (WPILib NWU Blue Alliance coordinates)
-TEST(DrivetrainOdometryTest, WheelVelocityToFieldPositionIntegration) {
-  double positionX = 2.0;
-  double positionY = 4.0;
-  double dt = 0.02; // 50 Hz loop
+// Test ChimiSwerve Inverse Kinematics
+TEST(ChimiSwerveKinematicsTest, PureTranslationAndRotation) {
+  // 1. Pure forward (FWD = 1, STR = 0, RCW = 0)
+  ModuleStates fwd = Drivetrain::InverseKinematics(1.0, 0.0, 0.0);
+  EXPECT_NEAR(fwd.wsFL, 1.0, 1e-5);
+  EXPECT_NEAR(fwd.wsFR, 1.0, 1e-5);
+  EXPECT_NEAR(fwd.wsBL, 1.0, 1e-5);
+  EXPECT_NEAR(fwd.wsBR, 1.0, 1e-5);
+  EXPECT_NEAR(fwd.waFL, 0.0, 1e-5);
+  EXPECT_NEAR(fwd.waFR, 0.0, 1e-5);
+  EXPECT_NEAR(fwd.waBL, 0.0, 1e-5);
+  EXPECT_NEAR(fwd.waBR, 0.0, 1e-5);
 
-  auto integrateOdometry = [&](double odoFWD, double odoSTR, double gyroDeg) {
-    double gyroRad = gyroDeg * M_PI / 180.0;
-    double fieldFWD = odoFWD * std::cos(gyroRad) + odoSTR * std::sin(gyroRad);
-    double fieldSTR = -odoFWD * std::sin(gyroRad) + odoSTR * std::cos(gyroRad);
-    positionX += fieldFWD * dt;
-    positionY -= fieldSTR * dt;
+  // 2. Pure strafe right (FWD = 0, STR = 1, RCW = 0)
+  ModuleStates str = Drivetrain::InverseKinematics(0.0, 1.0, 0.0);
+  EXPECT_NEAR(str.wsFL, 1.0, 1e-5);
+  EXPECT_NEAR(str.wsFR, 1.0, 1e-5);
+  EXPECT_NEAR(str.wsBL, 1.0, 1e-5);
+  EXPECT_NEAR(str.wsBR, 1.0, 1e-5);
+  EXPECT_NEAR(str.waFL, M_PI / 2.0, 1e-5); // 90° CW
+  EXPECT_NEAR(str.waFR, M_PI / 2.0, 1e-5);
+  EXPECT_NEAR(str.waBL, M_PI / 2.0, 1e-5);
+  EXPECT_NEAR(str.waBR, M_PI / 2.0, 1e-5);
+
+  // 3. Pure clockwise rotation (FWD = 0, STR = 0, RCW = 1)
+  ModuleStates rot = Drivetrain::InverseKinematics(0.0, 0.0, 1.0);
+  EXPECT_NEAR(rot.wsFL, 1.0, 1e-5);
+  EXPECT_NEAR(rot.wsFR, 1.0, 1e-5);
+  EXPECT_NEAR(rot.wsBL, 1.0, 1e-5);
+  EXPECT_NEAR(rot.wsBR, 1.0, 1e-5);
+
+  // 4. Combined translation + rotation desaturation (speeds exceed 1.0)
+  ModuleStates combo = Drivetrain::InverseKinematics(1.0, 1.0, 1.0);
+  EXPECT_LE(combo.wsFL, 1.0 + 1e-5);
+  EXPECT_LE(combo.wsFR, 1.0 + 1e-5);
+  EXPECT_LE(combo.wsBL, 1.0 + 1e-5);
+  EXPECT_LE(combo.wsBR, 1.0 + 1e-5);
+  double maxSpeed = std::max({combo.wsFL, combo.wsFR, combo.wsBL, combo.wsBR});
+  EXPECT_NEAR(maxSpeed, 1.0, 1e-5); // Normalized to 1.0
+}
+
+// Test Odometry Integration Math (ChimiSwerve forward kinematics)
+TEST(ChimiSwerveOdometryTest, FieldTransform) {
+  double posFWD = 0.0;
+  double posSTR = 0.0;
+  double dt = 0.02;
+
+  auto stepOdo = [&](double odoFWD, double odoSTR, double gyroDeg) {
+    double g = gyroDeg * M_PI / 180.0;
+    double fieldFWD = odoFWD * std::cos(g) - odoSTR * std::sin(g);
+    double fieldSTR = odoFWD * std::sin(g) + odoSTR * std::cos(g);
+    posFWD += fieldFWD * dt;
+    posSTR += fieldSTR * dt;
   };
 
-  // Case 1: Drive forward at 2.0 m/s for 1 second (50 steps) at heading 0
+  // Case 1: Drive forward at 2 m/s for 1 second (50 steps) facing 0°
   for (int i = 0; i < 50; ++i) {
-    integrateOdometry(2.0, 0.0, 0.0);
+    stepOdo(2.0, 0.0, 0.0);
   }
-  EXPECT_NEAR(positionX, 4.0, 1e-4);
-  EXPECT_NEAR(positionY, 4.0, 1e-4);
+  EXPECT_NEAR(posFWD, 2.0, 1e-4);
+  EXPECT_NEAR(posSTR, 0.0, 1e-4);
 
-  // Case 2: Strafe right at 1.0 m/s for 1 second (50 steps) at heading 0 (odoSTR > 0 is Right)
-  // In WPILib, Right is -Y, so positionY should decrease from 4.0 to 3.0
+  // Case 2: Strafe right at 1 m/s for 1 second facing 0°
   for (int i = 0; i < 50; ++i) {
-    integrateOdometry(0.0, 1.0, 0.0);
+    stepOdo(0.0, 1.0, 0.0);
   }
-  EXPECT_NEAR(positionX, 4.0, 1e-4);
-  EXPECT_NEAR(positionY, 3.0, 1e-4);
+  EXPECT_NEAR(posFWD, 2.0, 1e-4);
+  EXPECT_NEAR(posSTR, 1.0, 1e-4);
 
-  // Case 3: Strafe left at 1.0 m/s for 1 second (50 steps) at heading 0 (odoSTR < 0 is Left)
+  // Case 3: Robot turned 90° CW (facing field-right). Driving forward at 1 m/s should increase field STR.
   for (int i = 0; i < 50; ++i) {
-    integrateOdometry(0.0, -1.0, 0.0);
+    stepOdo(1.0, 0.0, 90.0);
   }
-  EXPECT_NEAR(positionX, 4.0, 1e-4);
-  EXPECT_NEAR(positionY, 4.0, 1e-4);
-
-  // Case 4: Turned 90 deg CCW (facing Left/+Y) and driving forward at 1.5 m/s for 1 second
-  // Robot forward should now translate directly to field +Y (increasing Y)
-  for (int i = 0; i < 50; ++i) {
-    integrateOdometry(1.5, 0.0, 90.0);
-  }
-  EXPECT_NEAR(positionX, 4.0, 1e-4);
-  EXPECT_NEAR(positionY, 5.5, 1e-4);
-}
-
-// Test Swerve Inverse Kinematics Wheel Velocities
-TEST(DrivetrainKinematicsTest, PureTranslationAndRotation) {
-  namespace DC = DrivetrainConstants;
-  double radius = 0.0;
-  for (const auto& m : DC::kModules) {
-    radius = std::max(radius, std::hypot(m.xMeters, m.yMeters));
-  }
-
-  // 1. Pure forward (vx = 1, vy = 0, rotCCW = 0)
-  for (int i = 0; i < 4; ++i) {
-    const auto& mc = DC::kModules[i];
-    double wx = 1.0 - 0.0 * (mc.yMeters / radius);
-    double wy = 0.0 + 0.0 * (mc.xMeters / radius);
-    double speed = std::hypot(wx, wy);
-    double angleTurns = std::atan2(wy, wx) / (2.0 * M_PI);
-    EXPECT_NEAR(speed, 1.0, 1e-5);
-    EXPECT_NEAR(angleTurns, 0.0, 1e-5); // 0 turns = straight forward
-  }
-
-  // 2. Pure CCW rotation (vx = 0, vy = 0, rotCCW = 1)
-  // Every wheel speed should be 1.0
-  for (int i = 0; i < 4; ++i) {
-    const auto& mc = DC::kModules[i];
-    double wx = 0.0 - 1.0 * (mc.yMeters / radius);
-    double wy = 0.0 + 1.0 * (mc.xMeters / radius);
-    double speed = std::hypot(wx, wy);
-    EXPECT_NEAR(speed, 1.0, 1e-5);
-  }
+  EXPECT_NEAR(posFWD, 2.0, 1e-4);
+  EXPECT_NEAR(posSTR, 2.0, 1e-4);
 }
 
 int main(int argc, char** argv) {

@@ -1,85 +1,95 @@
 // ============================================================================
-// FRC Team 8753 - 2026 Swerve Drivetrain Constants (from-scratch rewrite)
+// FRC Team 8753 - 2026 Swerve Drivetrain Constants (ChimiSwerve style)
 // ============================================================================
-// COORDINATE CONVENTION (used everywhere in the drivetrain code):
-//   +X = robot forward, +Y = robot left, +rotation = counter-clockwise (CCW)
-//   viewed from ABOVE the robot. Wheel angle 0 = wheel pointing forward,
-//   positive wheel angle = wheel rotated CCW (toward the left).
+// COORDINATE CONVENTION (ChimiSwerve / Ether swerve derivation):
+//   FWD  = +forward            STR = +right (strafe)
+//   RCW  = +clockwise rotation (viewed from ABOVE the robot)
+//   Gyro = degrees, CLOCKWISE positive (Robot.cpp negates the Pigeon2 yaw,
+//          which is CCW positive).
+//   Wheel angle from kinematics = radians, clockwise positive, 0 = forward.
 //
-// BRING-UP CHECKLIST (do these in order, robot on blocks):
-//   1. Enable TEST mode. Steer motors get a small +duty. Dashboard
-//      "Swerve/<mod>/SteerPhaseOK" must be TRUE for all four modules.
-//      If FALSE for a module, flip that module's steerInverted below.
-//   2. Disable. Rotate every wheel by hand so it points straight FORWARD
-//      (bevel gears all facing the same side). Read
-//      "Swerve/<mod>/RawEncoderTurns" and copy into encoderOffsetTurns.
-//   3. Redeploy, enable teleop, push left stick forward slightly.
-//      Every wheel must spin so the robot would move forward. If one spins
-//      backward, flip that module's driveInverted.
+// Steer sensors (CANcoders) are counter-clockwise positive when viewed from
+// above, so Drivetrain negates the kinematic angle before commanding steer.
+//
+// BRING-UP CHECKLIST (robot on blocks):
+//   1. Point every wheel straight forward (bevel gears all on the same side),
+//      zero the CANcoders in Phoenix Tuner X (or set kXXMagnetOffset below and
+//      set kWriteMagnetOffsets = true). Disabled dashboard
+//      "Swerve/XX_CANcoderDeg" must read ~0 for every module.
+//   2. Enable teleop, push left stick forward: every wheel must roll forward.
+//      If one rolls backward, flip that module's kXXDriveInverted.
+//   3. Push the right stick right: robot must spin CLOCKWISE.
+//   4. If a steer motor spins forever / oscillates, flip kSteerMotorInverted
+//      (steer motor must turn the same way the CANcoder counts).
 // ============================================================================
 
 #pragma once
 
-struct ModuleConstants {
-  const char* name;
-  int driveId;
-  int steerId;
-  int encoderId;
-  double xMeters;            ///< Module position, +X forward from robot center
-  double yMeters;            ///< Module position, +Y left from robot center
-  bool driveInverted;        ///< true -> positive duty drives wheel backward without inversion
-  bool steerInverted;        ///< Must make +steer duty turn the wheel CCW (encoder increasing)
-  double encoderOffsetTurns; ///< Raw CANcoder reading when wheel points forward
-};
+#include <cmath>
 
 namespace DrivetrainConstants {
-  // ---------- CAN bus ----------
-  // "rio" (or "") = roboRIO built-in CAN. Put your CANivore's name here if the
-  // swerve is on a CANivore (if this is wrong, NOTHING on the drivetrain moves).
-  inline constexpr const char* kCanBusName = "rio";
+  // ---------- CAN bus ("rio" = roboRIO, otherwise the CANivore name) ----------
+  inline constexpr const char* kCanBus = "rio";
 
-  // ---------- Robot geometry (wheel center to wheel center, meters) ----------
-  inline constexpr double kTrackLength = 0.533;  // front-to-back
-  inline constexpr double kTrackWidth  = 0.533;  // left-to-right
+  // ---------- CAN IDs ----------
+  inline constexpr int kFLDriveId = 30, kFLSteerId = 31, kFLEncoderId = 32;
+  inline constexpr int kFRDriveId = 20, kFRSteerId = 21, kFREncoderId = 22;
+  inline constexpr int kBLDriveId = 40, kBLSteerId = 41, kBLEncoderId = 42;
+  inline constexpr int kBRDriveId = 10, kBRSteerId = 11, kBREncoderId = 12;
+  inline constexpr int kPigeonId = 2;
 
-  // ---------- Modules: FL, FR, BL, BR ----------
-  // TODO: set encoderOffsetTurns per bring-up step 2.
-  inline constexpr ModuleConstants kModules[4] = {
-      {"FL", 30, 31, 32, +kTrackLength / 2, +kTrackWidth / 2, false, false, 0.0},
-      {"FR", 20, 21, 22, +kTrackLength / 2, -kTrackWidth / 2, false, false, 0.0},
-      {"BL", 40, 41, 42, -kTrackLength / 2, +kTrackWidth / 2, false, false, 0.0},
-      {"BR", 10, 11, 12, -kTrackLength / 2, -kTrackWidth / 2, false, false, 0.0},
-  };
+  // ---------- Robot dimensions (wheel center to wheel center, meters) ----------
+  inline constexpr double L = 0.533;                   ///< wheelbase  (front-to-back)
+  inline constexpr double W = 0.533;                   ///< trackwidth (left-to-right)
+  inline const double R = std::sqrt(L * L + W * W);    ///< diagonal
 
-  // ---------- Steering controller (hand-written P-D, runs on roboRIO) ----------
-  // Units: duty cycle output per TURN of wheel-angle error.
-  inline constexpr double kSteerP = 3.0;         // 0.1 turn (36 deg) error -> 0.30 duty
-  inline constexpr double kSteerD = 0.03;        // duty per (turn/sec) of error change
-  inline constexpr double kSteerStatic = 0.015;  // min duty to overcome friction
-  inline constexpr double kSteerMaxOutput = 0.5; // clamp on steer duty
-  inline constexpr double kSteerToleranceTurns = 0.004;  // ~1.4 deg -> output 0
-  inline constexpr double kSteerCurrentLimitAmps = 30.0;
+  // ---------- Inversions ----------
+  inline constexpr bool kFLDriveInverted = false;
+  inline constexpr bool kFRDriveInverted = true;
+  inline constexpr bool kBLDriveInverted = false;
+  inline constexpr bool kBRDriveInverted = true;
+  inline constexpr bool kSteerMotorInverted = false;
 
-  // Runaway protection: if steer output is pushing one way but the encoder moves
-  // the other way for this long, the steer motor is disabled (wrong phase).
-  inline constexpr double kRunawayTimeSec = 0.3;
-  inline constexpr double kRunawayMinVelTurnsPerSec = 0.5;
+  // ---------- CANcoder magnet offsets (turns) ----------
+  // false = leave CANcoder config alone (offsets set in Phoenix Tuner X).
+  // true  = write the offsets below to the CANcoders on every boot.
+  inline constexpr bool kWriteMagnetOffsets = false;
+  inline constexpr double kFLMagnetOffset = 0.0;
+  inline constexpr double kFRMagnetOffset = 0.0;
+  inline constexpr double kBLMagnetOffset = 0.0;
+  inline constexpr double kBRMagnetOffset = 0.0;
 
-  // Test-mode phase check duty
-  inline constexpr double kSteerTestDuty = 0.08;
+  // ---------- Steering (TalonFX onboard PositionDutyCycle, RemoteCANcoder) ----------
+  inline constexpr double ModuleP = 2.0;
+  inline constexpr double ModuleI = 0.0;
+  inline constexpr double ModuleD = 0.0;
+  inline constexpr double kSteerPeakOutput = 1.0;
+  inline constexpr double SteeringRampRateSeconds = 0.01;
+  inline constexpr double kSteerCurrentLimit = 40.0;      ///< A
+  inline constexpr double sensorToMechanismRatio = 1.0;   ///< CANcoder turns per wheel turn
+  inline constexpr double rotorToSensorRatio = 18.0;      ///< steer motor turns per wheel turn (VERIFY for your module)
 
-  // ---------- Drive ----------
-  inline constexpr double kDriveMaxOutput = 0.8;      // absolute duty cap
-  inline constexpr double kDriveNormalScale = 0.5;    // no trigger pressed
-  inline constexpr double kDriveBoostScale = 1.0;     // right trigger fully pressed
-  inline constexpr double kDriveSlowScale = 0.2;      // left trigger fully pressed
-  inline constexpr double kDriveRampSec = 0.15;       // open-loop ramp
-  inline constexpr double kDriveCurrentLimitAmps = 60.0;
+  // ---------- Drive (open-loop duty cycle) ----------
+  inline constexpr double DriveMotorsHardLimit = 0.75;    ///< absolute duty cap
+  inline constexpr double DriveOpenLoopRamp = 0.1;        ///< s
+  inline constexpr double kDriveCurrentLimit = 60.0;      ///< A
+  inline constexpr double DriveGearRatio = 5.0;           ///< motor turns per wheel turn (VERIFY)
+  inline constexpr double WheelDiameter = 0.102;          ///< m (~4 in)
 
-  // ---------- Odometry (verify against your module!) ----------
-  inline constexpr double kDriveGearRatio = 5.0;        // motor turns per wheel turn
-  inline constexpr double kWheelDiameterMeters = 0.102; // ~4 in
+  // ---------- Speed control (percent) ----------
+  // Output % = DefaultDriveSpeed + (triggerR - triggerL) * TriggerConstant
+  //   no trigger = 35%, full right = 65%, full left = 5%
+  inline constexpr double DefaultDriveSpeed = 35.0;
+  inline constexpr double TriggerConstant = 30.0;
+  inline constexpr double MinDriveSpeed = 5.0;
 
-  // ---------- Joystick ----------
-  inline constexpr double kDeadband = 0.1;
+  // ---------- Joystick deadzones ----------
+  inline constexpr double xdeadz = 0.1;
+  inline constexpr double ydeadz = 0.1;
+  inline constexpr double x2deadz = 0.1;
+
+  // ---------- Straight-drive heading lock ----------
+  inline constexpr bool kEnableHeadingLock = true;
+  inline constexpr double straightP = 0.02;               ///< RCW per degree of heading error
+  inline constexpr double rotationClamp = 0.3;            ///< max heading-lock correction
 }
