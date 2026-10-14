@@ -6,7 +6,6 @@
 
 #include <string>
 #include <frc/TimedRobot.h>
-#include <frc/XboxController.h>
 #include <frc/PS5Controller.h>
 #include <frc/Timer.h>
 #include <frc/DriverStation.h>
@@ -36,8 +35,7 @@ class Robot : public frc::TimedRobot {
   void SimulationInit() override;
   void SimulationPeriodic() override;
 
-  // ========== Unified Driver Controller Helpers (Xbox & PS5 DualSense) ==========
-  bool IsPS5() const;
+  // ========== Driver Controller Helpers (PS5 DualSense) ==========
   double GetDriverLeftX() const;
   double GetDriverLeftY() const;
   double GetDriverRightX() const;
@@ -53,12 +51,9 @@ class Robot : public frc::TimedRobot {
   const std::string kAutoNameCustom = "My Auto";
   std::string m_autoSelected;
 
-  // ========== Driver Controllers (Supports Port 0 with Port 1 fallback) ==========
-  frc::XboxController m_xboxController0{0};
-  frc::XboxController m_xboxController1{1};
+  // ========== Driver Controllers (PS5 DualSense - Port 0 with Port 1 fallback) ==========
   frc::PS5Controller m_ps5Controller0{0};
   frc::PS5Controller m_ps5Controller1{1};
-  frc::SendableChooser<std::string> m_controllerChooser;
   frc::Timer m_timer;
 
   // ========== Swerve Drivetrain ==========
