@@ -4,97 +4,73 @@
 #include <algorithm>
 
 #include "gtest/gtest.h"
-#include "TurretConstants.h"
+#include "DrivetrainConstants.h"
 
-// Test Dynamic Tolerance calculation (OnyxTronix #2231 model)
-TEST(TurretTargetingTest, DynamicToleranceScaling) {
-  auto calcDynamicTol = [](double dist) {
-    double apparentRadiusDeg = std::atan2(TurretConstants::kHubRadiusMeters, std::max(dist, 0.5)) * (180.0 / M_PI);
-    return std::clamp(
-        apparentRadiusDeg * TurretConstants::kToleranceMarginRatio,
-        TurretConstants::kMinToleranceDeg,
-        TurretConstants::kMaxToleranceDeg);
+// Test Swerve Angle Wrapping to [-0.5, 0.5) turns
+TEST(SwerveMathTest, AngleWrapping) {
+  auto wrapTurns = [](double t) {
+    return t - std::floor(t + 0.5);
   };
 
-  double closeTol = calcDynamicTol(1.5);
-  double midTol = calcDynamicTol(3.5);
-  double farTol = calcDynamicTol(6.5);
-
-  // Close tolerance should be larger than far tolerance to reduce lock-on latency
-  EXPECT_GT(closeTol, midTol);
-  EXPECT_GT(midTol, farTol);
-
-  // Ensure bounded by min and max
-  EXPECT_LE(closeTol, TurretConstants::kMaxToleranceDeg);
-  EXPECT_GE(farTol, TurretConstants::kMinToleranceDeg);
+  EXPECT_NEAR(wrapTurns(0.0), 0.0, 1e-6);
+  EXPECT_NEAR(wrapTurns(0.25), 0.25, 1e-6);
+  EXPECT_NEAR(wrapTurns(0.5), -0.5, 1e-6);
+  EXPECT_NEAR(wrapTurns(0.75), -0.25, 1e-6);
+  EXPECT_NEAR(wrapTurns(1.0), 0.0, 1e-6);
+  EXPECT_NEAR(wrapTurns(-0.25), -0.25, 1e-6);
+  EXPECT_NEAR(wrapTurns(-0.75), 0.25, 1e-6);
+  EXPECT_NEAR(wrapTurns(1.25), 0.25, 1e-6);
 }
 
-// Test Ballistic Table Interpolation
-TEST(TurretTargetingTest, BallisticTableInterpolation) {
-  const auto& table = TurretConstants::kBallisticTable;
-
-  auto interpRPM = [&](double dist) {
-    if (dist <= table.front().distanceMeters) return table.front().shooterRPM;
-    if (dist >= table.back().distanceMeters) return table.back().shooterRPM;
-    for (size_t i = 0; i < table.size() - 1; ++i) {
-      if (dist >= table[i].distanceMeters && dist <= table[i + 1].distanceMeters) {
-        double t = (dist - table[i].distanceMeters) / (table[i + 1].distanceMeters - table[i].distanceMeters);
-        return table[i].shooterRPM + t * (table[i + 1].shooterRPM - table[i].shooterRPM);
-      }
-    }
-    return table.front().shooterRPM;
+// Test Swerve Module Direction Optimization (never turn > 90 deg)
+TEST(SwerveMathTest, ModuleOptimization) {
+  auto wrapTurns = [](double t) {
+    return t - std::floor(t + 0.5);
   };
 
-  auto interpHood = [&](double dist) {
-    if (dist <= table.front().distanceMeters) return table.front().hoodAngleDeg;
-    if (dist >= table.back().distanceMeters) return table.back().hoodAngleDeg;
-    for (size_t i = 0; i < table.size() - 1; ++i) {
-      if (dist >= table[i].distanceMeters && dist <= table[i + 1].distanceMeters) {
-        double t = (dist - table[i].distanceMeters) / (table[i + 1].distanceMeters - table[i].distanceMeters);
-        return table[i].hoodAngleDeg + t * (table[i + 1].hoodAngleDeg - table[i].hoodAngleDeg);
-      }
+  auto optimize = [&](double targetTurns, double currentTurns, double& outSpeed) {
+    double delta = wrapTurns(targetTurns - currentTurns);
+    if (std::abs(delta) > 0.25) {
+      targetTurns = wrapTurns(targetTurns + 0.5);
+      outSpeed = -outSpeed;
     }
-    return table.front().hoodAngleDeg;
+    return targetTurns;
   };
 
-  // Exact boundary points
-  EXPECT_DOUBLE_EQ(interpRPM(1.5), 2200.0);
-  EXPECT_DOUBLE_EQ(interpHood(1.5), 20.0);
+  // Case 1: Wheel at 0, target 30 deg (0.0833 turns) -> no reversal needed
+  double speed1 = 1.0;
+  double optTarget1 = optimize(30.0 / 360.0, 0.0, speed1);
+  EXPECT_NEAR(optTarget1, 30.0 / 360.0, 1e-4);
+  EXPECT_DOUBLE_EQ(speed1, 1.0);
 
-  // Midpoint between 1.5m (2200) and 2.5m (2600) -> 2.0m: 2400 RPM, 24.0 deg hood
-  EXPECT_DOUBLE_EQ(interpRPM(2.0), 2400.0);
-  EXPECT_DOUBLE_EQ(interpHood(2.0), 24.0);
+  // Case 2: Wheel at 0, target 170 deg (0.4722 turns) -> should flip target by 180 and reverse speed
+  double speed2 = 1.0;
+  double optTarget2 = optimize(170.0 / 360.0, 0.0, speed2);
+  EXPECT_NEAR(optTarget2, -10.0 / 360.0, 1e-4);
+  EXPECT_DOUBLE_EQ(speed2, -1.0);
 
-  // Beyond boundary clamps
-  EXPECT_DOUBLE_EQ(interpRPM(1.0), 2200.0);
-  EXPECT_DOUBLE_EQ(interpRPM(10.0), 4700.0);
+  // Case 3: Wheel at 90 deg (0.25 turns), target -80 deg (-0.222 turns) -> delta is 170 deg -> reverse
+  double speed3 = 0.8;
+  double optTarget3 = optimize(-80.0 / 360.0, 0.25, speed3);
+  EXPECT_NEAR(optTarget3, 100.0 / 360.0, 1e-4);
+  EXPECT_DOUBLE_EQ(speed3, -0.8);
 }
 
-// Test Field-to-Robot Relative Angle Math (as in ChiefDelphi & OnyxTronix)
-TEST(TurretTargetingTest, OdometryAngleCalculation) {
-  double hubX = 10.0;
-  double hubY = 5.0;
+// Test Rescaled Deadband Function
+TEST(SwerveMathTest, DeadbandRescaling) {
+  auto deadband = [](double v) {
+    double d = DrivetrainConstants::kDeadband; // 0.1
+    if (std::abs(v) < d) return 0.0;
+    return std::copysign((std::abs(v) - d) / (1.0 - d), v);
+  };
 
-  // Case 1: Turret at (5.0, 5.0), Robot heading 0 -> Target directly ahead (0 deg)
-  double dx1 = hubX - 5.0;
-  double dy1 = hubY - 5.0;
-  double fieldAngle1 = std::atan2(dy1, dx1) * (180.0 / M_PI);
-  double robotRelAngle1 = std::remainder(fieldAngle1 - 0.0, 360.0);
-  if (robotRelAngle1 < 0.0) robotRelAngle1 += 360.0;
-  EXPECT_NEAR(robotRelAngle1, 0.0, 1e-4);
-
-  // Case 2: Turret at (10.0, 0.0), Robot heading 0 -> Target at 90 deg (left)
-  double dx2 = hubX - 10.0;
-  double dy2 = hubY - 0.0;
-  double fieldAngle2 = std::atan2(dy2, dx2) * (180.0 / M_PI);
-  double robotRelAngle2 = std::remainder(fieldAngle2 - 0.0, 360.0);
-  if (robotRelAngle2 < 0.0) robotRelAngle2 += 360.0;
-  EXPECT_NEAR(robotRelAngle2, 90.0, 1e-4);
-
-  // Case 3: Same position, but robot chassis turned 30 deg -> Target should be 60 deg relative
-  double robotRelAngle3 = std::remainder(fieldAngle2 - 30.0, 360.0);
-  if (robotRelAngle3 < 0.0) robotRelAngle3 += 360.0;
-  EXPECT_NEAR(robotRelAngle3, 60.0, 1e-4);
+  EXPECT_DOUBLE_EQ(deadband(0.0), 0.0);
+  EXPECT_DOUBLE_EQ(deadband(0.05), 0.0);
+  EXPECT_DOUBLE_EQ(deadband(-0.09), 0.0);
+  EXPECT_NEAR(deadband(0.1), 0.0, 1e-6);
+  EXPECT_NEAR(deadband(1.0), 1.0, 1e-6);
+  EXPECT_NEAR(deadband(-1.0), -1.0, 1e-6);
+  EXPECT_NEAR(deadband(0.55), 0.5, 1e-6);
 }
 
 // Test Swerve Odometry Integration Math (WPILib NWU Blue Alliance coordinates)
@@ -142,99 +118,34 @@ TEST(DrivetrainOdometryTest, WheelVelocityToFieldPositionIntegration) {
   EXPECT_NEAR(positionY, 5.5, 1e-4);
 }
 
-// Test Turret Odometry Fallback Aiming & Shooting Distance / RPM
-TEST(TurretTargetingTest, OdometryFallbackHubTargetingAndBallistics) {
-  // Simulate robot on field at (2.0, 4.05) facing forward (heading 0 deg)
-  // Blue Hub is at (4.63, 4.05)
-  double robotX = 2.0;
-  double robotY = 4.05;
-  double headingDeg = 0.0;
+// Test Swerve Inverse Kinematics Wheel Velocities
+TEST(DrivetrainKinematicsTest, PureTranslationAndRotation) {
+  namespace DC = DrivetrainConstants;
+  double radius = 0.0;
+  for (const auto& m : DC::kModules) {
+    radius = std::max(radius, std::hypot(m.xMeters, m.yMeters));
+  }
 
-  double hubX = TurretConstants::kBlueHubX;
-  double hubY = TurretConstants::kBlueHubY;
+  // 1. Pure forward (vx = 1, vy = 0, rotCCW = 0)
+  for (int i = 0; i < 4; ++i) {
+    const auto& mc = DC::kModules[i];
+    double wx = 1.0 - 0.0 * (mc.yMeters / radius);
+    double wy = 0.0 + 0.0 * (mc.xMeters / radius);
+    double speed = std::hypot(wx, wy);
+    double angleTurns = std::atan2(wy, wx) / (2.0 * M_PI);
+    EXPECT_NEAR(speed, 1.0, 1e-5);
+    EXPECT_NEAR(angleTurns, 0.0, 1e-5); // 0 turns = straight forward
+  }
 
-  double dx = hubX - robotX;
-  double dy = hubY - robotY;
-  double odomDist = std::hypot(dx, dy);
-
-  // Distance should be exactly 4.63 - 2.0 = 2.63 meters
-  EXPECT_NEAR(odomDist, 2.63, 1e-4);
-
-  // Target angle should be straight ahead (0 deg)
-  double fieldAngleDeg = std::atan2(dy, dx) * (180.0 / M_PI);
-  double robotRelAngle = std::remainder(fieldAngleDeg - headingDeg, 360.0);
-  if (robotRelAngle < 0.0) robotRelAngle += 360.0;
-  EXPECT_NEAR(robotRelAngle, 0.0, 1e-4);
-
-  // Interpolate RPM & hood for this 2.63m odometry distance
-  const auto& table = TurretConstants::kBallisticTable;
-  auto interpRPM = [&](double dist) {
-    double clamped = std::clamp(dist, table.front().distanceMeters, table.back().distanceMeters);
-    for (size_t i = 0; i < table.size() - 1; ++i) {
-      if (clamped >= table[i].distanceMeters && clamped <= table[i + 1].distanceMeters) {
-        double t = (clamped - table[i].distanceMeters) / (table[i + 1].distanceMeters - table[i].distanceMeters);
-        return table[i].shooterRPM + t * (table[i + 1].shooterRPM - table[i].shooterRPM);
-      }
-    }
-    return table.front().shooterRPM;
-  };
-
-  // At 2.5m: 2600 RPM. At 3.5m: 3050 RPM.
-  // At 2.63m: 2600 + (0.13 / 1.0) * 450 = 2658.5 RPM
-  double rpm = interpRPM(odomDist);
-  EXPECT_NEAR(rpm, 2658.5, 1.0);
-
-  // Red Hub check: Red Hub is at (11.91, 4.05)
-  // If robot is at (9.0, 4.05), dx = 2.91m
-  double redDist = std::hypot(TurretConstants::kRedHubX - 9.0, TurretConstants::kRedHubY - 4.05);
-  EXPECT_NEAR(redDist, 2.91, 1e-4);
-  double redRPM = interpRPM(redDist);
-  // At 2.5m: 2600. At 3.5m: 3050. (0.41 / 1.0) * 450 = 184.5 -> 2784.5 RPM
-  EXPECT_NEAR(redRPM, 2784.5, 1.0);
-}
-
-// Test Vision Yaw Sign Correction (Target to right must turn turret right/CW)
-TEST(TurretTargetingTest, VisionYawSignCorrection) {
-  double currentAngle = 90.0; // Turret pointing left (CCW+)
-
-  // Target is 10 deg to the RIGHT of camera crosshair (PhotonVision yaw = +10.0)
-  double visionYaw = 10.0;
-  double targetTurretDeg = currentAngle + (visionYaw * TurretConstants::kVisionYawSign);
-
-  // With kVisionYawSign = -1.0, the turret should decrease angle to 80 deg (turning right toward target)
-  EXPECT_DOUBLE_EQ(targetTurretDeg, 80.0);
-
-  // Target is 15 deg to the LEFT of camera crosshair (PhotonVision yaw = -15.0)
-  visionYaw = -15.0;
-  targetTurretDeg = currentAngle + (visionYaw * TurretConstants::kVisionYawSign);
-
-  // Turret should increase angle to 105 deg (turning left toward target)
-  EXPECT_DOUBLE_EQ(targetTurretDeg, 105.0);
-}
-
-// Test Shooting Interlock Logic
-TEST(TurretTargetingTest, ReadyToShootInterlock) {
-  auto isReadyToShoot = [](bool targetLocked, double targetRPM, double actualRPM) {
-    bool speedOk = (targetRPM > 500.0) && (std::abs(actualRPM - targetRPM) <= 150.0);
-    return targetLocked && speedOk;
-  };
-
-  // Flywheels stopped (0 RPM) -> NOT ready to shoot
-  EXPECT_FALSE(isReadyToShoot(true, 2600.0, 0.0));
-
-  // Flywheels spinning up (1500 RPM / 2600 RPM) -> NOT ready
-  EXPECT_FALSE(isReadyToShoot(true, 2600.0, 1500.0));
-
-  // Flywheels at speed (2580 RPM / 2600 RPM) but turret NOT locked -> NOT ready
-  EXPECT_FALSE(isReadyToShoot(false, 2600.0, 2580.0));
-
-  // Both turret locked AND flywheels at speed -> READY TO SHOOT
-  EXPECT_TRUE(isReadyToShoot(true, 2600.0, 2580.0));
-  EXPECT_TRUE(isReadyToShoot(true, 2600.0, 2600.0));
-  EXPECT_TRUE(isReadyToShoot(true, 2600.0, 2720.0));
-
-  // Overspeed beyond tolerance (+200 RPM) -> NOT ready
-  EXPECT_FALSE(isReadyToShoot(true, 2600.0, 2850.0));
+  // 2. Pure CCW rotation (vx = 0, vy = 0, rotCCW = 1)
+  // Every wheel speed should be 1.0
+  for (int i = 0; i < 4; ++i) {
+    const auto& mc = DC::kModules[i];
+    double wx = 0.0 - 1.0 * (mc.yMeters / radius);
+    double wy = 0.0 + 1.0 * (mc.xMeters / radius);
+    double speed = std::hypot(wx, wy);
+    EXPECT_NEAR(speed, 1.0, 1e-5);
+  }
 }
 
 int main(int argc, char** argv) {
@@ -243,4 +154,3 @@ int main(int argc, char** argv) {
   int ret = RUN_ALL_TESTS();
   return ret;
 }
-

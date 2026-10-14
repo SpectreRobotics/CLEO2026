@@ -16,13 +16,10 @@
 
 #include <ctre/phoenix6/Pigeon2.hpp>
 #include <ctre/phoenix6/TalonFX.hpp>
-#include <ctre/phoenix6/Orchestra.hpp>
 #include <ctre/phoenix6/CANcoder.hpp>
 
 #include "Drivetrain.h"
 #include "DrivetrainConstants.h"
-#include "Turret.h"
-#include "TurretConstants.h"
 
 class Robot : public frc::TimedRobot {
  public:
@@ -38,7 +35,6 @@ class Robot : public frc::TimedRobot {
   void TestPeriodic() override;
   void SimulationInit() override;
   void SimulationPeriodic() override;
-  void Intake();
 
   // ========== Unified Driver Controller Helpers (Xbox & PS5 DualSense) ==========
   bool IsPS5() const;
@@ -57,16 +53,6 @@ class Robot : public frc::TimedRobot {
   const std::string kAutoNameCustom = "My Auto";
   std::string m_autoSelected;
 
-  // ========== Intake & Slide Mechanisms (Commented out - swerve only) ==========
-  // ctre::phoenix6::hardware::TalonFX m_slideMotor{1, ctre::phoenix6::CANBus{"intake"}};
-  // ctre::phoenix6::hardware::TalonFX m_IntakeMotor{2, ctre::phoenix6::CANBus{"intake"}};
-  // ctre::phoenix6::hardware::TalonFX m_indexer{3, ctre::phoenix6::CANBus{"intake"}};
-  // ctre::phoenix6::hardware::TalonFX m_feeder{4, ctre::phoenix6::CANBus{"intake"}};
-
-  static constexpr double kIntakeSpeed = 0.8;
-  static constexpr double kSlideSpeed = 0.4;
-  static constexpr double kSlideOneFootRotations = 15.0;
-
   // ========== Driver Controllers (Supports Port 0 with Port 1 fallback) ==========
   frc::XboxController m_xboxController0{0};
   frc::XboxController m_xboxController1{1};
@@ -74,8 +60,6 @@ class Robot : public frc::TimedRobot {
   frc::PS5Controller m_ps5Controller1{1};
   frc::SendableChooser<std::string> m_controllerChooser;
   frc::Timer m_timer;
-
-  bool m_intakeOut = false;
 
   // ========== Swerve Drivetrain ==========
   Drivetrain m_swerve;
@@ -91,12 +75,6 @@ class Robot : public frc::TimedRobot {
   bool FieldCentric = true;
 
   frc::SendableChooser<std::string> m_driveModeChooser;
-
-  // ========== Fixed Shooter Subsystem (Commented out - swerve only) ==========
-  // Turret m_turret;
-
-  // ========== Team Color Chooser ==========
-  frc::SendableChooser<std::string> m_teamColorChooser;
 
   int GetDriverPort() const;
 };
