@@ -72,5 +72,16 @@ class Robot : public frc::TimedRobot {
 
   frc::SendableChooser<std::string> m_driveModeChooser;
 
+  // Setup indexer, feeder, and both turret motors. 
+  // Motor setups 
+  ctre::phoenix6::hardware::TalonFX FeederMotor{10};  
+  ctre::phoenix6::hardware::TalonFX FeederMotor2 {11};  
+  ctre::phoenix6::hardware::TalonFX IndexerMotor{12};  
+  ctre::phoenix6::hardware::TalonFX TurretMotor{13};   
+  ctre::phoenix6::hardware::TalonFX TurretMotor2{14};  
+  ctre::phoenix6::hardware::TalonFX IntakeMotor {15}; 
+  // The CAN ID #'s are just placeholders, not sure what to put them as. 
+
+ 
   int GetDriverPort() const;
 };
