@@ -74,13 +74,26 @@ class Robot : public frc::TimedRobot {
 
   // Setup indexer, feeder, and both turret motors. 
   // Motor setups 
-  ctre::phoenix6::hardware::TalonFX FeederMotor{10};  
-  ctre::phoenix6::hardware::TalonFX FeederMotor2 {11};  
-  ctre::phoenix6::hardware::TalonFX IndexerMotor{12};  
-  ctre::phoenix6::hardware::TalonFX TurretMotor{13};   
-  ctre::phoenix6::hardware::TalonFX TurretMotor2{14};  
-  ctre::phoenix6::hardware::TalonFX IntakeMotor {15}; 
-  // The CAN ID #'s are just placeholders, not sure what to put them as. 
+  ctre::phoenix6::hardware::TalonFX BottomFeederMotor {55};  
+  ctre::phoenix6::hardware::TalonFX TopFeederMotor {57};  
+  ctre::phoenix6::hardware::TalonFX IndexerMotor {50};  
+  ctre::phoenix6::hardware::TalonFX OuttakeLeft {60};   
+  ctre::phoenix6::hardware::TalonFX OuttakeRight {61};  
+  ctre::phoenix6::hardware::TalonFX IntakeMotor {54}; 
+  ctre::phoenix6::hardware::TalonFX RollerbedMotor {56};
+  ctre::phoenix6::hardware::TalonFX DriveMotor1 {30};
+  ctre::phoenix6::hardware::TalonFX DriveMotor2 {20};
+  ctre::phoenix6::hardware::TalonFX DriveMotor3 {10};
+  ctre::phoenix6::hardware::TalonFX DriveMotor4 {40};
+  ctre::phoenix6::hardware::TalonFX SteerMotor1 {31};
+  ctre::phoenix6::hardware::TalonFX SteerMotor2 {21};
+  ctre::phoenix6::hardware::TalonFX SteerMotor3 {11};
+  ctre::phoenix6::hardware::TalonFX Steermotor4 {41};
+  ctre::phoenix6::hardware::TalonFX CANCoderSwerve1 {12};
+  ctre::phoenix6::hardware::TalonFX CANCoderSwerve2 {22};
+  ctre::phoenix6::hardware::TalonFX CANCoderSwerve3 {32};
+  ctre::phoenix6::hardware::TalonFX CANCoderSwerve4 {42};
+  // These are the fixed CAN ID's and updated motor names.
 
  
   int GetDriverPort() const;
