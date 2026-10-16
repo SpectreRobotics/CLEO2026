@@ -1,7 +1,7 @@
 // ============================================================================
 // FRC Team 8753 - 2026 Swerve Drivetrain (Restored from swerve-base / 2026_Bot)
-// Runs Swerve 2 (FR 20/21/22), Swerve 3 (FL 30/31/32), and Swerve 4 (BL 40/41/42)
-// Swerve 1 (BR 10/11/12) disabled/ignored in Coast mode
+// Runs Swerve 1 (BR 10/11/12), Swerve 2 (FR 20/21/22), and Swerve 4 (BL 40/41/42)
+// Swerve 3 (FL 30/31/32) disabled/ignored in Coast mode
 // ============================================================================
 
 #define _USE_MATH_DEFINES
@@ -24,12 +24,12 @@ namespace DC = DrivetrainConstants;
 
 namespace {
 // Straight-ahead AbsolutePosition readings from Phoenix Tuner X screenshots:
+//   Swerve 1 (BR, CANcoder 12 on "rio"):       -0.297363 turns
 //   Swerve 2 (FR, CANcoder 22 on "rio"):       -0.173584 turns
-//   Swerve 3 (FL, CANcoder 32 on "intakebus"): -0.359131 turns
 //   Swerve 4 (BL, CANcoder 42 on "rio"):        0.158203 turns
-//   Swerve 1 (BR, CANcoder 12 on "rio"):       -0.297363 turns (disabled)
+//   Swerve 3 (FL, CANcoder 32 on "intakebus"): -0.359131 turns (disabled)
+constexpr double kSwerve1BRZeroTurns = -0.297363;
 constexpr double kSwerve2FRZeroTurns = -0.173584;
-constexpr double kSwerve3FLZeroTurns = -0.359131;
 constexpr double kSwerve4BLZeroTurns =  0.158203;
 }  // namespace
 
@@ -41,29 +41,21 @@ Drivetrain::Drivetrain() {
 }
 
 void Drivetrain::ConfigureMotors() {
-  // Drive Krakens configurations: Swerve 2 (FR), Swerve 3 (FL), Swerve 4 (BL) active
+  // Drive Krakens configurations: Swerve 1 (BR), Swerve 2 (FR), Swerve 4 (BL) active
   driveConfig.ClosedLoopRamps.VoltageClosedLoopRampPeriod = units::time::second_t(0.5);
   driveConfig.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
 
-  m_FL_Drive.GetConfigurator().Apply(driveConfig);
   m_FR_Drive.GetConfigurator().Apply(driveConfig);
   m_BL_Drive.GetConfigurator().Apply(driveConfig);
+  m_BR_Drive.GetConfigurator().Apply(driveConfig);
 
-  // Swerve 1 (BR: Drive 10, Steer 11) disabled in Coast mode so it casters freely
-  ctre::phoenix6::configs::TalonFXConfiguration brCoastConfig{};
-  brCoastConfig.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Coast;
-  m_BR_Drive.GetConfigurator().Apply(brCoastConfig);
-  m_BR_Steer.GetConfigurator().Apply(brCoastConfig);
-  m_BR_Drive.Set(0.0);
-  m_BR_Steer.Set(0.0);
-
-  // Swerve 3 (FL: Steer 31 on "rio", CANcoder 32 on "intakebus")
-  // Uses RotorSensor (18:1) seeded from CANcoder 32 on "intakebus"
-  configFL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RotorSensor;
-  configFL.Feedback.SensorToMechanismRatio = 18.0;
-  configFL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(0.01);
-  configFL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Coast;
-  configFL.ClosedLoopGeneral.ContinuousWrap = true;
+  // Swerve 3 (FL: Drive 30, Steer 31) disabled in Coast mode so it casters freely
+  ctre::phoenix6::configs::TalonFXConfiguration flCoastConfig{};
+  flCoastConfig.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Coast;
+  m_FL_Drive.GetConfigurator().Apply(flCoastConfig);
+  m_FL_Steer.GetConfigurator().Apply(flCoastConfig);
+  m_FL_Drive.Set(0.0);
+  m_FL_Steer.Set(0.0);
 
   // Swerve 2 (FR: Steer 21 & CANcoder 22 on "rio")
   configFR.Feedback.FeedbackRemoteSensorID = CANcoderFR.GetDeviceID();
@@ -83,21 +75,25 @@ void Drivetrain::ConfigureMotors() {
   configBL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Coast;
   configBL.ClosedLoopGeneral.ContinuousWrap = true;
 
+  // Swerve 1 (BR: Steer 11 & CANcoder 12 on "rio")
+  configBR.Feedback.FeedbackRemoteSensorID = CANcoderBR.GetDeviceID();
+  configBR.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
+  configBR.Feedback.SensorToMechanismRatio = 1.0;
+  configBR.Feedback.RotorToSensorRatio = 18;
+  configBR.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(0.01);
+  configBR.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Coast;
+  configBR.ClosedLoopGeneral.ContinuousWrap = true;
+
   Posconfig.kP = ModuleP;
   Posconfig.kI = ModuleI;
   Posconfig.kD = ModuleD;
 
-  m_FL_Steer.GetConfigurator().Apply(configFL);
-  m_FL_Steer.GetConfigurator().Apply(Posconfig);
   m_FR_Steer.GetConfigurator().Apply(configFR);
   m_FR_Steer.GetConfigurator().Apply(Posconfig);
   m_BL_Steer.GetConfigurator().Apply(configBL);
   m_BL_Steer.GetConfigurator().Apply(Posconfig);
-
-  // Seed Swerve 3 (FL Steer 31) from CANcoder 32 on "intakebus" using calibrated zero offset
-  const double flZeroedTurns = std::remainder(
-      CANcoderFL.GetAbsolutePosition().GetValueAsDouble() - kSwerve3FLZeroTurns, 1.0);
-  m_FL_Steer.SetPosition(units::angle::turn_t{flZeroedTurns});
+  m_BR_Steer.GetConfigurator().Apply(configBR);
+  m_BR_Steer.GetConfigurator().Apply(Posconfig);
 }
 
 void Drivetrain::DisabledInit() {
@@ -113,29 +109,26 @@ void Drivetrain::DisabledInit() {
 }
 
 void Drivetrain::DisabledPeriodic() {
-  m_BR_Drive.Set(0.0);
-  m_BR_Steer.Set(0.0);
+  m_FL_Drive.Set(0.0);
+  m_FL_Steer.Set(0.0);
 
-  // Keep Swerve 3 (FL Steer 31) synced to CANcoder 32 ("intakebus") while disabled
-  const double flZeroedTurns = std::remainder(
-      CANcoderFL.GetAbsolutePosition().GetValueAsDouble() - kSwerve3FLZeroTurns, 1.0);
-  m_FL_Steer.SetPosition(units::angle::turn_t{flZeroedTurns});
-
-  frc::SmartDashboard::PutNumber("Swerve/FL_ZeroedTurns", flZeroedTurns);
   frc::SmartDashboard::PutNumber(
       "Swerve/FR_ZeroedTurns",
       std::remainder(m_FR_Steer.GetPosition().GetValueAsDouble() - kSwerve2FRZeroTurns, 1.0));
   frc::SmartDashboard::PutNumber(
       "Swerve/BL_ZeroedTurns",
       std::remainder(m_BL_Steer.GetPosition().GetValueAsDouble() - kSwerve4BLZeroTurns, 1.0));
+  frc::SmartDashboard::PutNumber(
+      "Swerve/BR_ZeroedTurns",
+      std::remainder(m_BR_Steer.GetPosition().GetValueAsDouble() - kSwerve1BRZeroTurns, 1.0));
 }
 
 void Drivetrain::TestZeroAzimuth() {
   ctre::phoenix6::controls::PositionDutyCycle steerPos{0_tr};
-  m_FL_Steer.SetControl(steerPos.WithPosition(0_tr));
+  m_FL_Steer.Set(0.0);  // Swerve 3 disabled
   m_FR_Steer.SetControl(steerPos.WithPosition(units::angle::turn_t{kSwerve2FRZeroTurns}));
   m_BL_Steer.SetControl(steerPos.WithPosition(units::angle::turn_t{kSwerve4BLZeroTurns}));
-  m_BR_Steer.Set(0.0);  // Swerve 1 disabled
+  m_BR_Steer.SetControl(steerPos.WithPosition(units::angle::turn_t{kSwerve1BRZeroTurns}));
   m_FL_Drive.Set(0.0);
   m_FR_Drive.Set(0.0);
   m_BL_Drive.Set(0.0);
@@ -144,10 +137,10 @@ void Drivetrain::TestZeroAzimuth() {
 
 void Drivetrain::TestRotateModules(double speed) {
   ctre::phoenix6::controls::DutyCycleOut duty{speed};
-  m_FL_Steer.SetControl(duty);
+  m_FL_Steer.Set(0.0);  // Swerve 3 disabled
   m_FR_Steer.SetControl(duty);
   m_BL_Steer.SetControl(duty);
-  m_BR_Steer.Set(0.0);  // Swerve 1 disabled
+  m_BR_Steer.SetControl(duty);
   m_FL_Drive.Set(0.0);
   m_FR_Drive.Set(0.0);
   m_BL_Drive.Set(0.0);
@@ -156,18 +149,18 @@ void Drivetrain::TestRotateModules(double speed) {
 
 void Drivetrain::Update(double x, double y, double x2, double GyroValue,
                         double triggerL, double triggerR, bool FieldCentric) {
-  // Always keep Swerve 1 (BR: IDs 10 & 11) disabled/coasting
-  m_BR_Drive.Set(0.0);
-  m_BR_Steer.Set(0.0);
+  // Always keep Swerve 3 (FL: IDs 30 & 31) disabled/coasting
+  m_FL_Drive.Set(0.0);
+  m_FL_Steer.Set(0.0);
 
   // Rotation disabled: only forwards/backwards (y) and side-to-side (x)
   (void)x2;
   ROT = 0.0;
 
-  // Get zeroed wheel angles in radians for Swerve 3 (FL), Swerve 2 (FR), and Swerve 4 (BL)
-  double FL_pos = std::remainder(m_FL_Steer.GetPosition().GetValueAsDouble(), 1.0) * (2.0 * M_PI);
+  // Get zeroed wheel angles in radians for Swerve 2 (FR), Swerve 4 (BL), and Swerve 1 (BR)
   double FR_pos = std::remainder(m_FR_Steer.GetPosition().GetValueAsDouble() - kSwerve2FRZeroTurns, 1.0) * (2.0 * M_PI);
   double BL_pos = std::remainder(m_BL_Steer.GetPosition().GetValueAsDouble() - kSwerve4BLZeroTurns, 1.0) * (2.0 * M_PI);
+  double BR_pos = std::remainder(m_BR_Steer.GetPosition().GetValueAsDouble() - kSwerve1BRZeroTurns, 1.0) * (2.0 * M_PI);
 
   double STR = x;
   double FWD = y;
@@ -188,12 +181,12 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   double C = FWD;
   double D = FWD;
 
-  // Calculate wheel speeds for Swerve 3 (FL), Swerve 2 (FR), Swerve 4 (BL)
+  // Calculate wheel speeds for Swerve 2 (FR), Swerve 4 (BL), Swerve 1 (BR)
   if (x != 0.0 || y != 0.0) {
-    speedFL = std::sqrt((B * B) + (D * D));
+    speedFL = 0.0;
     speedFR = std::sqrt((B * B) + (C * C));
     speedBL = std::sqrt((A * A) + (D * D));
-    speedBR = 0.0;
+    speedBR = std::sqrt((A * A) + (C * C));
   } else {
     speedFL = 0.0;
     speedFR = 0.0;
@@ -201,43 +194,43 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     speedBR = 0.0;
   }
 
-  std::vector<double> wheelSpeeds = {speedFL, speedFR, speedBL};
+  std::vector<double> wheelSpeeds = {speedFR, speedBL, speedBR};
   double maxSpeed = *std::max_element(wheelSpeeds.begin(), wheelSpeeds.end());
   if (maxSpeed >= 1.0) {
-    speedFL /= maxSpeed;
     speedFR /= maxSpeed;
     speedBL /= maxSpeed;
+    speedBR /= maxSpeed;
   }
 
   // Calculate final angle for each active wheel
   if (x != 0.0 || y != 0.0) {
-    tempangleFL = std::atan2(B, D);
     tempangleFR = std::atan2(B, C);
     tempangleBL = std::atan2(A, D);
+    tempangleBR = std::atan2(A, C);
   }
 
   // Adjust angles to ensure minimal rotation
-  angleFL = MinimizeRotation(tempangleFL, FL_pos);
   angleFR = MinimizeRotation(tempangleFR, FR_pos);
   angleBL = MinimizeRotation(tempangleBL, BL_pos);
+  angleBR = MinimizeRotation(tempangleBR, BR_pos);
 
-  double errorFL = WrapError(tempangleFL, FL_pos);
   double errorFR = WrapError(tempangleFR, FR_pos);
   double errorBL = WrapError(tempangleBL, BL_pos);
+  double errorBR = WrapError(tempangleBR, BR_pos);
 
-  speedFL *= std::cos(errorFL);
   speedFR *= std::cos(errorFR);
   speedBL *= std::cos(errorBL);
+  speedBR *= std::cos(errorBR);
 
-  ctre::phoenix6::controls::PositionDutyCycle steerm_speedFL{0_tr};
   ctre::phoenix6::controls::PositionDutyCycle steerm_speedFR{0_tr};
   ctre::phoenix6::controls::PositionDutyCycle steerm_speedBL{0_tr};
+  ctre::phoenix6::controls::PositionDutyCycle steerm_speedBR{0_tr};
 
-  steerm_speedFL.Slot = 0;
   steerm_speedFR.Slot = 0;
   steerm_speedBL.Slot = 0;
+  steerm_speedBR.Slot = 0;
 
-  // Apply 0.05 turn encoder deadband on FL, FR, BL steer motors; stop steer when stick is centered
+  // Apply 0.05 turn encoder deadband on FR, BL, BR steer motors; stop steer when stick is centered
   auto commandSteerWithDeadband = [&](hardware::TalonFX& motor,
                                       controls::PositionDutyCycle& cmd,
                                       double targetAngleRad,
@@ -256,18 +249,18 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     }
   };
 
-  commandSteerWithDeadband(m_FL_Steer, steerm_speedFL, angleFL, 0.0);
   commandSteerWithDeadband(m_FR_Steer, steerm_speedFR, angleFR, kSwerve2FRZeroTurns);
   commandSteerWithDeadband(m_BL_Steer, steerm_speedBL, angleBL, kSwerve4BLZeroTurns);
+  commandSteerWithDeadband(m_BR_Steer, steerm_speedBR, angleBR, kSwerve1BRZeroTurns);
 
-  double speedFLEr = speedFL - oldspeedFL;
-  oldspeedFL += (speedFLEr >= 0.07) ? 0.07 : (speedFLEr <= -0.07) ? -0.07 : speedFLEr;
   double speedFREr = speedFR - oldspeedFR;
   oldspeedFR += (speedFREr >= 0.07) ? 0.07 : (speedFREr <= -0.07) ? -0.07 : speedFREr;
   double speedBLEr = speedBL - oldspeedBL;
   oldspeedBL += (speedBLEr >= 0.07) ? 0.07 : (speedBLEr <= -0.07) ? -0.07 : speedBLEr;
+  double speedBREr = speedBR - oldspeedBR;
+  oldspeedBR += (speedBREr >= 0.07) ? 0.07 : (speedBREr <= -0.07) ? -0.07 : speedBREr;
 
-  // Control Driving motors: FL and BL are negated (-oldspeed), FR is positive, BR (Swerve 1) is disabled (0.0)
+  // Control Driving motors: FL (Swerve 3) is disabled (0.0), BL is negated (-oldspeed), FR and BR are positive
   if (std::isnan(speedFR) || (x == 0.0 && y == 0.0)) {
     oldspeedFL = 0; oldspeedFR = 0; oldspeedBL = 0; oldspeedBR = 0;
     m_FL_Drive.Set(0.0);
@@ -277,17 +270,17 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   } else {
     // dividing by 2 for a max base speed of 50%; triggers add boost or subtract for precision
     const double cap = std::clamp(0.5 + 0.4 * triggerR - 0.35 * triggerL, 0.1, 1.0);
-    m_FL_Drive.Set(std::clamp(-oldspeedFL / 2.0, -cap, cap));
+    m_FL_Drive.Set(0.0);  // Swerve 3 disabled
     m_FR_Drive.Set(std::clamp(oldspeedFR / 2.0, -cap, cap));
     m_BL_Drive.Set(std::clamp(-oldspeedBL / 2.0, -cap, cap));
-    m_BR_Drive.Set(0.0);  // Swerve 1 disabled
+    m_BR_Drive.Set(std::clamp(oldspeedBR / 2.0, -cap, cap));
   }
 
-  double wheelSpeedFL = (m_FL_Drive.GetVelocity().GetValueAsDouble() / 6.0375) * (M_PI * 0.0889);
   double wheelSpeedFR = (m_FR_Drive.GetVelocity().GetValueAsDouble() / 6.0375) * (M_PI * 0.0889);
   double wheelSpeedBL = (m_BL_Drive.GetVelocity().GetValueAsDouble() / 6.0375) * (M_PI * 0.0889);
+  double wheelSpeedBR = (m_BR_Drive.GetVelocity().GetValueAsDouble() / 6.0375) * (M_PI * 0.0889);
 
-  odometryUpdate(FL_pos, FR_pos, BL_pos, 0.0, wheelSpeedFL, wheelSpeedFR, wheelSpeedBL, 0.0, GyroValue);
+  odometryUpdate(0.0, FR_pos, BL_pos, BR_pos, 0.0, wheelSpeedFR, wheelSpeedBL, wheelSpeedBR, GyroValue);
 }
 
 // Function to minimize rotation within +-PI/2
@@ -357,24 +350,24 @@ double Drivetrain::calcYawStraight(double targetAngle, double currentAngle, doub
 void Drivetrain::odometryUpdate(double angleFL, double angleFR, double angleBL, double angleBR,
                                 double wheelSpeedFL, double wheelSpeedFR, double wheelSpeedBL,
                                 double wheelSpeedBR, double GyroValue) {
-  (void)angleBR;
-  (void)wheelSpeedBR;
+  (void)angleFL;
+  (void)wheelSpeedFL;
   units::time::second_t odoCurrentTime = frc::Timer::GetFPGATimestamp();
   odoDeltaTime = (odoCurrentTime - odoLastTime).value();
   odoLastTime = odoCurrentTime;
 
-  double B_FL = std::sin(angleFL) * wheelSpeedFL;
   double B_FR = std::sin(angleFR) * wheelSpeedFR;
   double A_BL = std::sin(angleBL) * wheelSpeedBL;
+  double A_BR = std::sin(angleBR) * wheelSpeedBR;
 
-  double D_FL = std::cos(angleFL) * wheelSpeedFL;
   double C_FR = std::cos(angleFR) * wheelSpeedFR;
   double D_BL = std::cos(angleBL) * wheelSpeedBL;
+  double C_BR = std::cos(angleBR) * wheelSpeedBR;
 
-  double A = A_BL;
-  double B = (B_FL + B_FR) / 2.0;
-  double C = C_FR;
-  double D = (D_FL + D_BL) / 2.0;
+  double A = (A_BL + A_BR) / 2.0;
+  double B = B_FR;
+  double C = (C_FR + C_BR) / 2.0;
+  double D = D_BL;
 
   odoROT = GyroValue * M_PI / 180.0;
 
@@ -414,20 +407,20 @@ void Drivetrain::UpdateSim(units::time::second_t dt) {
     sim.SetRotorVelocity(units::turns_per_second_t{rps});
     sim.AddRotorPosition(units::turn_t{rps * dt.value()});
   };
-  simDrive(m_FL_Drive, -oldspeedFL / 2.0);
+  simDrive(m_FL_Drive, 0.0);
   simDrive(m_FR_Drive, oldspeedFR / 2.0);
   simDrive(m_BL_Drive, -oldspeedBL / 2.0);
-  simDrive(m_BR_Drive, 0.0);
+  simDrive(m_BR_Drive, oldspeedBR / 2.0);
 
-  const double tFL = (angleFL / M_PI) / 2.0;
   const double tFR = (angleFR / M_PI) / 2.0;
   const double tBL = (angleBL / M_PI) / 2.0;
+  const double tBR = (angleBR / M_PI) / 2.0;
 
-  m_FL_Steer.GetSimState().SetRawRotorPosition(units::turn_t{tFL * DC::rotorToSensorRatio});
   m_FR_Steer.GetSimState().SetRawRotorPosition(units::turn_t{tFR * DC::rotorToSensorRatio});
   m_BL_Steer.GetSimState().SetRawRotorPosition(units::turn_t{tBL * DC::rotorToSensorRatio});
+  m_BR_Steer.GetSimState().SetRawRotorPosition(units::turn_t{tBR * DC::rotorToSensorRatio});
 
-  CANcoderFL.GetSimState().SetRawPosition(units::turn_t{tFL});
   CANcoderFR.GetSimState().SetRawPosition(units::turn_t{tFR});
   CANcoderBL.GetSimState().SetRawPosition(units::turn_t{tBL});
+  CANcoderBR.GetSimState().SetRawPosition(units::turn_t{tBR});
 }
