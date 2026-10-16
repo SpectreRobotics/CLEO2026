@@ -135,6 +135,7 @@ class Drivetrain {
   void PublishTelemetry();
 
   ctre::phoenix6::controls::PositionDutyCycle steerRequest{units::angle::turn_t{0}};
+  ctre::phoenix6::controls::DutyCycleOut steerDutyRequest{0.0};
   ctre::phoenix6::controls::DutyCycleOut driveRequest{0.0};
 
   // ---------- Module state ----------

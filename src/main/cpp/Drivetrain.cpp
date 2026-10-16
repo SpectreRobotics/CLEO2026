@@ -13,6 +13,7 @@
 #include <units/angle.h>
 #include <units/angular_velocity.h>
 #include <units/current.h>
+#include <units/frequency.h>
 
 using namespace ctre::phoenix6;
 using namespace units::literals;
@@ -27,12 +28,14 @@ double WheelMps(double motorRps) {
   return (motorRps / DC::DriveGearRatio) * (kPi * DC::WheelDiameter);
 }
 
-/// Kinematic angle (rad, CW+) of a wheel from its fused steer sensor turns.
+/// Kinematic angle (rad, CW+) of a wheel from its CANcoder turns.
 double SensorTurnsToKinematicRad(double turns) {
   return std::remainder(turns, 1.0) * 2.0 * kPi;
 }
 }  // namespace
 
+// Note: CANcoderFL (ID 32, Swerve 3) is on the "intake" CAN bus; all other swerve
+// motors and CANcoders (12, 22, 42) are on the "rio" CAN bus.
 Drivetrain::Drivetrain()
     : m_FL_Drive{DC::kFLDriveId, CANBus{DC::kCanBus}},
       m_FR_Drive{DC::kFRDriveId, CANBus{DC::kCanBus}},
@@ -42,13 +45,13 @@ Drivetrain::Drivetrain()
       m_FR_Steer{DC::kFRSteerId, CANBus{DC::kCanBus}},
       m_BL_Steer{DC::kBLSteerId, CANBus{DC::kCanBus}},
       m_BR_Steer{DC::kBRSteerId, CANBus{DC::kCanBus}},
-      CANcoderFL{DC::kFLEncoderId, CANBus{DC::kCanBus}},
+      CANcoderFL{DC::kFLEncoderId, CANBus{DC::kIntakeCanBus}},
       CANcoderFR{DC::kFREncoderId, CANBus{DC::kCanBus}},
       CANcoderBL{DC::kBLEncoderId, CANBus{DC::kCanBus}},
       CANcoderBR{DC::kBREncoderId, CANBus{DC::kCanBus}} {}
 
 // ============================================================================
-// ConfigureMotors (with retry & current magnet offset preservation)
+// ConfigureMotors (applies motor configs & new CANcoder magnet offsets)
 // ============================================================================
 void Drivetrain::ConfigureMotors() {
   bool ok = true;
@@ -87,35 +90,47 @@ void Drivetrain::ConfigureMotors() {
   applyDrive(m_BL_Drive, DC::kBLDriveInverted, "BL_Drive");
   applyDrive(m_BR_Drive, DC::kBRDriveInverted, "BR_Drive");
 
-  // ---------- CANcoders: preserve current magnet offsets stored on the robot ----------
+  // ---------- CANcoders: write magnet offsets for Swerve 1-4 ----------
   if (DC::kWriteMagnetOffsets) {
-    auto applyEncoder = [&](hardware::CANcoder& enc, double offset) {
+    auto applyEncoder = [&](hardware::CANcoder& enc, double offset, const char* name) {
       configs::CANcoderConfiguration cfg{};
+      // Refresh existing config first so SensorDirection/DiscontinuityPoint are preserved
+      enc.GetConfigurator().Refresh(cfg, 50_ms);
       cfg.MagnetSensor.MagnetOffset = units::turn_t{offset};
-      cfg.MagnetSensor.SensorDirection = signals::SensorDirectionValue::CounterClockwise_Positive;
-      cfg.MagnetSensor.AbsoluteSensorDiscontinuityPoint = units::turn_t{0.5};
-      ok &= enc.GetConfigurator().Apply(cfg, 100_ms).IsOK();
-    };
-    applyEncoder(CANcoderFL, DC::kFLMagnetOffset);
-    applyEncoder(CANcoderFR, DC::kFRMagnetOffset);
-    applyEncoder(CANcoderBL, DC::kBLMagnetOffset);
-    applyEncoder(CANcoderBR, DC::kBRMagnetOffset);
-  } else {
-    // Read and publish the current magnet offsets already stored in each CANcoder
-    auto readOffset = [](hardware::CANcoder& enc, const char* key) {
-      configs::MagnetSensorConfigs magCfg{};
-      if (enc.GetConfigurator().Refresh(magCfg, 50_ms).IsOK()) {
-        frc::SmartDashboard::PutNumber(key, magCfg.MagnetOffset.value());
+      bool encOk = false;
+      for (int attempt = 1; attempt <= 5; ++attempt) {
+        auto status = enc.GetConfigurator().Apply(cfg, 100_ms);
+        if (status.IsOK()) {
+          frc::SmartDashboard::PutString(std::string("Swerve/Config_") + name, "OK");
+          encOk = true;
+          break;
+        }
+        if (attempt == 5) {
+          frc::SmartDashboard::PutString(std::string("Swerve/Config_") + name, status.GetName());
+        }
       }
+      ok &= encOk;
     };
-    readOffset(CANcoderFL, "Swerve/FL_MagnetOffsetTurns");
-    readOffset(CANcoderFR, "Swerve/FR_MagnetOffsetTurns");
-    readOffset(CANcoderBL, "Swerve/BL_MagnetOffsetTurns");
-    readOffset(CANcoderBR, "Swerve/BR_MagnetOffsetTurns");
+    applyEncoder(CANcoderBR, DC::kBRMagnetOffset, "BR_CANcoder12"); // Swerve 1: -0.3969
+    applyEncoder(CANcoderFR, DC::kFRMagnetOffset, "FR_CANcoder22"); // Swerve 2:  0.168701
+    applyEncoder(CANcoderFL, DC::kFLMagnetOffset, "FL_CANcoder32"); // Swerve 3:  0.599121 ("intake" bus)
+    applyEncoder(CANcoderBL, DC::kBLMagnetOffset, "BL_CANcoder42"); // Swerve 4:  0.329102
   }
 
-  // ---------- Steer motors: onboard Slot 0 PositionDutyCycle fused with RemoteCANcoder ----------
-  auto applySteer = [&](hardware::TalonFX& motor, int canCoderId, const char* name) {
+  // Publish active magnet offsets to SmartDashboard
+  frc::SmartDashboard::PutNumber("Swerve/BR_MagnetOffsetTurns", DC::kBRMagnetOffset);
+  frc::SmartDashboard::PutNumber("Swerve/FR_MagnetOffsetTurns", DC::kFRMagnetOffset);
+  frc::SmartDashboard::PutNumber("Swerve/FL_MagnetOffsetTurns", DC::kFLMagnetOffset);
+  frc::SmartDashboard::PutNumber("Swerve/BL_MagnetOffsetTurns", DC::kBLMagnetOffset);
+
+  // Set 100 Hz position update frequency on all 4 CANcoders (especially FL on "intake" bus)
+  CANcoderFL.GetPosition().SetUpdateFrequency(100_Hz);
+  CANcoderFR.GetPosition().SetUpdateFrequency(100_Hz);
+  CANcoderBL.GetPosition().SetUpdateFrequency(100_Hz);
+  CANcoderBR.GetPosition().SetUpdateFrequency(100_Hz);
+
+  // ---------- Steer motors (FR, BL, BR on "rio" with RemoteCANcoder; FL on "rio" bridged to CANcoder 32 on "intake") ----------
+  auto applySteer = [&](hardware::TalonFX& motor, int canCoderId, bool sameCanBus, const char* name) {
     configs::TalonFXConfiguration cfg{};
     cfg.MotorOutput.NeutralMode = signals::NeutralModeValue::Brake;
     cfg.MotorOutput.Inverted = DC::kSteerMotorInverted
@@ -125,21 +140,26 @@ void Drivetrain::ConfigureMotors() {
     cfg.MotorOutput.PeakReverseDutyCycle = -DC::kSteerPeakOutput;
     cfg.CurrentLimits.StatorCurrentLimit = units::ampere_t{DC::kSteerCurrentLimit};
     cfg.CurrentLimits.StatorCurrentLimitEnable = true;
-    cfg.Feedback.FeedbackRemoteSensorID = canCoderId;
-    cfg.Feedback.FeedbackSensorSource = signals::FeedbackSensorSourceValue::RemoteCANcoder;
-    cfg.Feedback.SensorToMechanismRatio = DC::sensorToMechanismRatio;
-    cfg.Feedback.RotorToSensorRatio = DC::rotorToSensorRatio;
-    cfg.ClosedLoopGeneral.ContinuousWrap = true;
-    cfg.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::second_t{DC::SteeringRampRateSeconds};
-    cfg.Slot0.kP = DC::ModuleP;
-    cfg.Slot0.kI = DC::ModuleI;
-    cfg.Slot0.kD = DC::ModuleD;
+    if (sameCanBus) {
+      cfg.Feedback.FeedbackRemoteSensorID = canCoderId;
+      cfg.Feedback.FeedbackSensorSource = signals::FeedbackSensorSourceValue::RemoteCANcoder;
+      cfg.Feedback.SensorToMechanismRatio = DC::sensorToMechanismRatio;
+      cfg.Feedback.RotorToSensorRatio = DC::rotorToSensorRatio;
+      cfg.ClosedLoopGeneral.ContinuousWrap = true;
+      cfg.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::second_t{DC::SteeringRampRateSeconds};
+      cfg.Slot0.kP = DC::ModuleP;
+      cfg.Slot0.kI = DC::ModuleI;
+      cfg.Slot0.kD = DC::ModuleD;
+    } else {
+      // FL Steer (ID 31 on "rio") is bridged by roboRIO to CANcoder 32 (on "intake" bus)
+      cfg.OpenLoopRamps.DutyCycleOpenLoopRampPeriod = units::second_t{DC::SteeringRampRateSeconds};
+    }
     ok &= applyWithRetry(motor, cfg, name);
   };
-  applySteer(m_FL_Steer, DC::kFLEncoderId, "FL_Steer");
-  applySteer(m_FR_Steer, DC::kFREncoderId, "FR_Steer");
-  applySteer(m_BL_Steer, DC::kBLEncoderId, "BL_Steer");
-  applySteer(m_BR_Steer, DC::kBREncoderId, "BR_Steer");
+  applySteer(m_FL_Steer, DC::kFLEncoderId, false, "FL_Steer"); // CANcoder 32 is on "intake" bus
+  applySteer(m_FR_Steer, DC::kFREncoderId, true,  "FR_Steer"); // CANcoder 22 is on "rio" bus
+  applySteer(m_BL_Steer, DC::kBLEncoderId, true,  "BL_Steer"); // CANcoder 42 is on "rio" bus
+  applySteer(m_BR_Steer, DC::kBREncoderId, true,  "BR_Steer"); // CANcoder 12 is on "rio" bus
 
   hasBootstrapped = false;
   m_configsApplied = ok;
@@ -151,6 +171,7 @@ void Drivetrain::ConfigureMotors() {
 // ============================================================================
 void Drivetrain::DisabledInit() {
   SetDrive(0.0, 0.0, 0.0, 0.0);
+  m_FL_Steer.SetControl(steerDutyRequest.WithOutput(0.0));
 }
 
 void Drivetrain::DisabledPeriodic() {
@@ -390,17 +411,22 @@ void Drivetrain::TestRotateModules(double dt) {
 // Hardware Helpers
 // ============================================================================
 void Drivetrain::ReadSteerTurns() {
-  // Read fused position from the steer TalonFX (configured with RemoteCANcoder,
-  // which automatically includes the CANcoder's stored magnet offset).
-  turnsFL = m_FL_Steer.GetPosition().GetValueAsDouble();
-  turnsFR = m_FR_Steer.GetPosition().GetValueAsDouble();
-  turnsBL = m_BL_Steer.GetPosition().GetValueAsDouble();
-  turnsBR = m_BR_Steer.GetPosition().GetValueAsDouble();
+  // Read live wheel position (in turns, including MagnetOffset) directly from each CANcoder
+  turnsFL = CANcoderFL.GetPosition().GetValueAsDouble(); // CANcoder 32 on "intake" bus
+  turnsFR = CANcoderFR.GetPosition().GetValueAsDouble(); // CANcoder 22 on "rio" bus
+  turnsBL = CANcoderBL.GetPosition().GetValueAsDouble(); // CANcoder 42 on "rio" bus
+  turnsBR = CANcoderBR.GetPosition().GetValueAsDouble(); // CANcoder 12 on "rio" bus
 }
 
 void Drivetrain::HoldSteer() {
+  // FL Steer (ID 31 on "rio") is bridged on the roboRIO to CANcoder 32 (on "intake" bus)
+  // using the exact same proportional control law as Slot 0 (Duty = ModuleP * errorTurns):
+  const double errFL = std::remainder(lastTargetTurnsFL - turnsFL, 1.0);
+  const double dutyFL = std::clamp(DC::ModuleP * errFL, -DC::kSteerPeakOutput, DC::kSteerPeakOutput);
+  m_FL_Steer.SetControl(steerDutyRequest.WithOutput(dutyFL));
+
+  // FR, BL, BR Steer (IDs 21, 41, 11 on "rio") use onboard Slot 0 PositionDutyCycle with RemoteCANcoder
   steerRequest.Slot = 0;
-  m_FL_Steer.SetControl(steerRequest.WithPosition(units::turn_t{lastTargetTurnsFL}));
   m_FR_Steer.SetControl(steerRequest.WithPosition(units::turn_t{lastTargetTurnsFR}));
   m_BL_Steer.SetControl(steerRequest.WithPosition(units::turn_t{lastTargetTurnsBL}));
   m_BR_Steer.SetControl(steerRequest.WithPosition(units::turn_t{lastTargetTurnsBR}));

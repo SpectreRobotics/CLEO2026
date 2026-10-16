@@ -9,8 +9,10 @@
 //   Wheel angle (wa) = radians, clockwise positive, 0 = straight ahead.
 //
 // CANCODER MAGNET OFFSETS:
-//   kWriteMagnetOffsets = false -> uses the current magnet offsets already
-//   stored in the CANcoders' flash memory on the robot (never overwrites them).
+//   Swerve 1 (BR, ID 12, "rio" bus):    -0.3969
+//   Swerve 2 (FR, ID 22, "rio" bus):     0.168701
+//   Swerve 3 (FL, ID 32, "intake" bus):  0.599121
+//   Swerve 4 (BL, ID 42, "rio" bus):     0.329102
 // ============================================================================
 
 #pragma once
@@ -19,18 +21,18 @@
 
 namespace DrivetrainConstants {
   // ---------- CAN bus names ----------
-  //   "rio"     = roboRIO built-in CAN bus (all swerve modules + Pigeon2)
-  //   "intake"  = Intake CANivore (IntakeMotor + RollerbedMotor)
-  //   "Tophalf" = Tophalf CANivore (Feeders, Indexer, Outtake)
+  //   "rio"     = roboRIO built-in CAN bus (all swerve drive/steer motors, CANcoders 12/22/42, Pigeon2)
+  //   "intake"  = Intake CANivore (IntakeMotor 54, RollerbedMotor 56, and Swerve 3 FL CANcoder 32)
+  //   "Tophalf" = Tophalf CANivore (Feeders 55/57, Indexer 50, Outtake 60/61)
   inline constexpr const char* kCanBus = "rio";
   inline constexpr const char* kIntakeCanBus = "intake";
   inline constexpr const char* kTophalfCanBus = "Tophalf";
 
   // ---------- Swerve Module CAN IDs ----------
-  // Module 3 (Front Left):  Drive 30, Steer 31, CANcoder 32
-  // Module 2 (Front Right): Drive 20, Steer 21, CANcoder 22
-  // Module 4 (Back Left):   Drive 40, Steer 41, CANcoder 42
-  // Module 1 (Back Right):  Drive 10, Steer 11, CANcoder 12
+  // Swerve 3 (Front Left):  Drive 30 ("rio"), Steer 31 ("rio"), CANcoder 32 ("intake")
+  // Swerve 2 (Front Right): Drive 20 ("rio"), Steer 21 ("rio"), CANcoder 22 ("rio")
+  // Swerve 4 (Back Left):   Drive 40 ("rio"), Steer 41 ("rio"), CANcoder 42 ("rio")
+  // Swerve 1 (Back Right):  Drive 10 ("rio"), Steer 11 ("rio"), CANcoder 12 ("rio")
   inline constexpr int kFLDriveId = 30, kFLSteerId = 31, kFLEncoderId = 32;
   inline constexpr int kFRDriveId = 20, kFRSteerId = 21, kFREncoderId = 22;
   inline constexpr int kBLDriveId = 40, kBLSteerId = 41, kBLEncoderId = 42;
@@ -52,7 +54,7 @@ namespace DrivetrainConstants {
   inline constexpr double W = 0.533;                   ///< trackwidth (left-to-right)
   inline const double R = std::sqrt(L * L + W * W);    ///< diagonal diameter
 
-  // ---------- Motor Inversions (matched to current CANcoder magnet offsets) ----------
+  // ---------- Motor Inversions (matched to CANcoder magnet offsets) ----------
   inline constexpr bool kFLDriveInverted = false;
   inline constexpr bool kFRDriveInverted = false;
   inline constexpr bool kBLDriveInverted = false;
@@ -60,14 +62,17 @@ namespace DrivetrainConstants {
   inline constexpr bool kSteerMotorInverted = false;   ///< CounterClockwise_Positive
 
   // ---------- CANcoder magnet offsets (turns) ----------
-  // false = use the current magnet offsets already stored on the CANcoders.
-  inline constexpr bool kWriteMagnetOffsets = false;
-  inline constexpr double kFLMagnetOffset = 0.0;
-  inline constexpr double kFRMagnetOffset = 0.0;
-  inline constexpr double kBLMagnetOffset = 0.0;
-  inline constexpr double kBRMagnetOffset = 0.0;
+  // Swerve 1 (BR, ID 12): -0.3969
+  // Swerve 2 (FR, ID 22):  0.168701
+  // Swerve 3 (FL, ID 32):  0.599121
+  // Swerve 4 (BL, ID 42):  0.329102
+  inline constexpr bool kWriteMagnetOffsets = true;
+  inline constexpr double kBRMagnetOffset = -0.3969;   ///< Swerve 1 (CANcoder 12)
+  inline constexpr double kFRMagnetOffset = 0.168701;  ///< Swerve 2 (CANcoder 22)
+  inline constexpr double kFLMagnetOffset = 0.599121;  ///< Swerve 3 (CANcoder 32, on "intake" bus)
+  inline constexpr double kBLMagnetOffset = 0.329102;  ///< Swerve 4 (CANcoder 42)
 
-  // ---------- Steering (TalonFX Slot 0 PositionDutyCycle + RemoteCANcoder) ----------
+  // ---------- Steering (TalonFX Slot 0 PositionDutyCycle + RemoteCANcoder / Cross-Bus P) ----------
   inline constexpr double ModuleP = 2.0;
   inline constexpr double ModuleI = 0.0;
   inline constexpr double ModuleD = 0.0;
