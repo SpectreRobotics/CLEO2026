@@ -100,11 +100,11 @@ class Drivetrain {
   ctre::phoenix6::hardware::TalonFX m_BL_Steer{41};
   ctre::phoenix6::hardware::TalonFX m_BR_Steer{11};
 
-  // CANcoders *2
-  ctre::phoenix6::hardware::CANcoder CANcoderFL{32};
-  ctre::phoenix6::hardware::CANcoder CANcoderFR{22};
-  ctre::phoenix6::hardware::CANcoder CANcoderBL{42};
-  ctre::phoenix6::hardware::CANcoder CANcoderBR{12};
+  // CANcoders *2 (Swerve 3 CANcoder 32 is on "intakebus"; 22, 42, 12 are on "rio")
+  ctre::phoenix6::hardware::CANcoder CANcoderFL{32, ctre::phoenix6::CANBus{"intakebus"}};
+  ctre::phoenix6::hardware::CANcoder CANcoderFR{22, ctre::phoenix6::CANBus{"rio"}};
+  ctre::phoenix6::hardware::CANcoder CANcoderBL{42, ctre::phoenix6::CANBus{"rio"}};
+  ctre::phoenix6::hardware::CANcoder CANcoderBR{12, ctre::phoenix6::CANBus{"rio"}};
 
  private:
   ctre::phoenix6::configs::Slot0Configs Posconfig{};
