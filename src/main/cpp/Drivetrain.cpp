@@ -427,12 +427,18 @@ void Drivetrain::ReadSteerTurns() {
   // Read live wheel position (in turns):
   //   FR, BL, BR read fused RemoteCANcoder position from the steer TalonFX on "rio"
   //   FL reads CANcoder 32 on "intakebus" (or seeded m_FL_Steer position)
-  turnsFL = CANcoderFL.IsConnected()
-                ? CANcoderFL.GetPosition().GetValueAsDouble()
-                : m_FL_Steer.GetPosition().GetValueAsDouble();
-  turnsFR = m_FR_Steer.GetPosition().GetValueAsDouble();
-  turnsBL = m_BL_Steer.GetPosition().GetValueAsDouble();
-  turnsBR = m_BR_Steer.GetPosition().GetValueAsDouble();
+  const double rawFL = CANcoderFL.IsConnected()
+                           ? CANcoderFL.GetPosition().GetValueAsDouble()
+                           : m_FL_Steer.GetPosition().GetValueAsDouble();
+  const double rawFR = m_FR_Steer.GetPosition().GetValueAsDouble();
+  const double rawBL = m_BL_Steer.GetPosition().GetValueAsDouble();
+  const double rawBR = m_BR_Steer.GetPosition().GetValueAsDouble();
+
+  // Hysteresis buffer: ignore static CANcoder noise smaller than kSteerDeadbandTurns (±0.001 turns)
+  if (!hasBootstrapped || std::abs(rawFL - turnsFL) >= DC::kSteerDeadbandTurns) turnsFL = rawFL;
+  if (!hasBootstrapped || std::abs(rawFR - turnsFR) >= DC::kSteerDeadbandTurns) turnsFR = rawFR;
+  if (!hasBootstrapped || std::abs(rawBL - turnsBL) >= DC::kSteerDeadbandTurns) turnsBL = rawBL;
+  if (!hasBootstrapped || std::abs(rawBR - turnsBR) >= DC::kSteerDeadbandTurns) turnsBR = rawBR;
 }
 
 void Drivetrain::StopSteer() {
@@ -445,21 +451,10 @@ void Drivetrain::StopSteer() {
 void Drivetrain::HoldSteer() {
   steerRequest.Slot = 0;
 
-  auto commandModuleSteer = [&](hardware::TalonFX& motor, double targetTurns, double actualTurns) {
-    const double err = std::remainder(targetTurns - actualTurns, 1.0);
-    // Static CANcoder noise buffer: if within kSteerDeadbandTurns (~0.5% turn), hold brake at 0.0
-    if (std::abs(err) < DC::kSteerDeadbandTurns) {
-      motor.Set(0.0);
-    } else {
-      const double wrappedTarget = std::remainder(targetTurns, 1.0);
-      motor.SetControl(steerRequest.WithPosition(units::turn_t{wrappedTarget}));
-    }
-  };
-
-  commandModuleSteer(m_FL_Steer, lastTargetTurnsFL, turnsFL);
-  commandModuleSteer(m_FR_Steer, lastTargetTurnsFR, turnsFR);
-  commandModuleSteer(m_BL_Steer, lastTargetTurnsBL, turnsBL);
-  commandModuleSteer(m_BR_Steer, lastTargetTurnsBR, turnsBR);
+  m_FL_Steer.SetControl(steerRequest.WithPosition(units::turn_t{std::remainder(lastTargetTurnsFL, 1.0)}));
+  m_FR_Steer.SetControl(steerRequest.WithPosition(units::turn_t{std::remainder(lastTargetTurnsFR, 1.0)}));
+  m_BL_Steer.SetControl(steerRequest.WithPosition(units::turn_t{std::remainder(lastTargetTurnsBL, 1.0)}));
+  m_BR_Steer.SetControl(steerRequest.WithPosition(units::turn_t{std::remainder(lastTargetTurnsBR, 1.0)}));
 }
 
 void Drivetrain::SetDrive(double fl, double fr, double bl, double br) {

@@ -33,7 +33,8 @@ Robot::Robot() {
   m_controllerChooser.AddOption("Xbox", "Xbox");
   frc::SmartDashboard::PutData("Controller Type", &m_controllerChooser);
 
-  // Configure swerve drivetrain motors
+  // Configure swerve drivetrain motors and zero gyro heading on boot
+  m_pigeon.Reset();
   m_swerve.ConfigureMotors();
 }
 

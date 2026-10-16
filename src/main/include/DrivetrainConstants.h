@@ -79,7 +79,7 @@ namespace DrivetrainConstants {
   inline constexpr double kSteerPeakOutput = 1.0;
   inline constexpr double SteeringRampRateSeconds = 0.01;
   inline constexpr double kSteerCurrentLimit = 40.0;      ///< A (ChimiSwerve Sec 3.6 brownout protection)
-  inline constexpr double kSteerDeadbandTurns = 0.005;    ///< ~1.8 deg buffer to ignore static CANcoder noise (±0.001 turns)
+  inline constexpr double kSteerDeadbandTurns = 0.003;    ///< 0.3% turn (~1.1 deg) buffer to filter ±0.001 static CANcoder noise
   inline constexpr double sensorToMechanismRatio = 1.0;   ///< CANcoder turns per wheel turn
   inline constexpr double rotorToSensorRatio = 18.0;      ///< steer motor turns per CANcoder turn (18:1)
 
@@ -105,7 +105,7 @@ namespace DrivetrainConstants {
   inline constexpr double x2deadz = 0.1;
 
   // ---------- Straight-drive heading lock (ChimiSwerve Sec 2.3d, Pages 34-35) ----------
-  inline constexpr bool kEnableHeadingLock = true;
+  inline constexpr bool kEnableHeadingLock = false;       ///< disabled by default so gyro never fights stick translation
   inline constexpr double straightP = 0.004;              ///< ChimiSwerve calcYawStraight kP (0.004 / deg)
   inline constexpr double straightI = 0.0;
   inline constexpr double straightD = 0.0;
