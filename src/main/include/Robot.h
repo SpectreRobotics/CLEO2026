@@ -43,6 +43,8 @@ class Robot : public frc::TimedRobot {
   double GetDriverRightTrigger() const;
   bool GetDriverRightBumperPressed();
   bool GetDriverResetGyroPressed();
+  bool GetDriverCrossButton() const;
+  bool GetDriverCircleButton() const;
   int GetDriverPOV() const;
 
  private:
@@ -56,7 +58,12 @@ class Robot : public frc::TimedRobot {
   frc::PS5Controller m_ps5Controller1{1};
   frc::Timer m_timer;
 
-  // ========== Swerve Drivetrain ==========
+  // ========== Swerve Drivetrain (ChimiSwerve White Paper) ==========
+  // Swerve CAN IDs (owned by m_swerve, defined in DrivetrainConstants.h):
+  //   FL (Mod 3): Drive 30, Steer 31, CANcoder 32
+  //   FR (Mod 2): Drive 20, Steer 21, CANcoder 22
+  //   BL (Mod 4): Drive 40, Steer 41, CANcoder 42
+  //   BR (Mod 1): Drive 10, Steer 11, CANcoder 12
   Drivetrain m_swerve;
   ctre::phoenix6::hardware::Pigeon2 m_pigeon{DrivetrainConstants::kPigeonId,
                                              ctre::phoenix6::CANBus{DrivetrainConstants::kCanBus}};
@@ -72,29 +79,24 @@ class Robot : public frc::TimedRobot {
 
   frc::SendableChooser<std::string> m_driveModeChooser;
 
-  // Setup indexer, feeder, and both turret motors. 
-  // Motor setups 
-  ctre::phoenix6::hardware::TalonFX BottomFeederMotor {55};  
-  ctre::phoenix6::hardware::TalonFX TopFeederMotor {57};  
-  ctre::phoenix6::hardware::TalonFX IndexerMotor {50};  
-  ctre::phoenix6::hardware::TalonFX OuttakeLeft {60};   
-  ctre::phoenix6::hardware::TalonFX OuttakeRight {61};  
-  ctre::phoenix6::hardware::TalonFX IntakeMotor {54}; 
-  ctre::phoenix6::hardware::TalonFX RollerbedMotor {56};
-  ctre::phoenix6::hardware::TalonFX DriveMotor1 {30};
-  ctre::phoenix6::hardware::TalonFX DriveMotor2 {20};
-  ctre::phoenix6::hardware::TalonFX DriveMotor3 {10};
-  ctre::phoenix6::hardware::TalonFX DriveMotor4 {40};
-  ctre::phoenix6::hardware::TalonFX SteerMotor1 {31};
-  ctre::phoenix6::hardware::TalonFX SteerMotor2 {21};
-  ctre::phoenix6::hardware::TalonFX SteerMotor3 {11};
-  ctre::phoenix6::hardware::TalonFX Steermotor4 {41};
-  ctre::phoenix6::hardware::TalonFX CANCoderSwerve1 {12};
-  ctre::phoenix6::hardware::TalonFX CANCoderSwerve2 {22};
-  ctre::phoenix6::hardware::TalonFX CANCoderSwerve3 {32};
-  ctre::phoenix6::hardware::TalonFX CANCoderSwerve4 {42};
-  // These are the fixed CAN ID's and updated motor names.
+  // ========== Mechanism Motors (Fixed CAN IDs & CAN Buses) ==========
+  // "Tophalf" CAN bus: Feeders, Indexer, Outtake
+  ctre::phoenix6::hardware::TalonFX BottomFeederMotor{DrivetrainConstants::kBottomFeederMotorId,
+                                                      ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
+  ctre::phoenix6::hardware::TalonFX TopFeederMotor{DrivetrainConstants::kTopFeederMotorId,
+                                                   ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
+  ctre::phoenix6::hardware::TalonFX IndexerMotor{DrivetrainConstants::kIndexerMotorId,
+                                                 ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
+  ctre::phoenix6::hardware::TalonFX OuttakeLeft{DrivetrainConstants::kOuttakeLeftMotorId,
+                                                ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
+  ctre::phoenix6::hardware::TalonFX OuttakeRight{DrivetrainConstants::kOuttakeRightMotorId,
+                                                 ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
 
- 
+  // "intake" CAN bus: Intake and Rollerbed
+  ctre::phoenix6::hardware::TalonFX IntakeMotor{DrivetrainConstants::kIntakeMotorId,
+                                                ctre::phoenix6::CANBus{DrivetrainConstants::kIntakeCanBus}};
+  ctre::phoenix6::hardware::TalonFX RollerbedMotor{DrivetrainConstants::kRollerbedMotorId,
+                                                   ctre::phoenix6::CANBus{DrivetrainConstants::kIntakeCanBus}};
+
   int GetDriverPort() const;
 };

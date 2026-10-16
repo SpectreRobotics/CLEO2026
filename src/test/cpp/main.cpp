@@ -7,7 +7,7 @@
 #include "Drivetrain.h"
 #include "DrivetrainConstants.h"
 
-// Test ChimiOptimizeAzimuth (90° flip detection and cosine scaling)
+// Test ChimiOptimizeAzimuth (ChimiSwerve Page 16: 90° flip detection and cosine scaling)
 TEST(ChimiSwerveMathTest, OptimizeAzimuthShortestPath) {
   // Case 1: Wheel at 0 turns, target angle is 0 rad (forward)
   double speed1 = 1.0;
@@ -15,22 +15,22 @@ TEST(ChimiSwerveMathTest, OptimizeAzimuthShortestPath) {
   EXPECT_NEAR(targetTurns1, 0.0, 1e-5);
   EXPECT_NEAR(speed1, 1.0, 1e-5);
 
-  // Case 2: Target is 30° CW (+pi/6 rad). Kinematic is CW+, sensor is CCW+ -> target is -1/12 turns.
+  // Case 2: Target is 30° (+pi/6 rad) -> +1/12 turns
   double speed2 = 1.0;
   double targetTurns2 = Drivetrain::ChimiOptimizeAzimuth(M_PI / 6.0, 0.0, speed2);
-  EXPECT_NEAR(targetTurns2, -1.0 / 12.0, 1e-4);
-  EXPECT_GT(speed2, 0.8); // Cosine of small angle should remain high
+  EXPECT_NEAR(targetTurns2, 1.0 / 12.0, 1e-4);
+  EXPECT_GT(speed2, 0.8); // Cosine of small angle remains high
 
   // Case 3: Target is 170° away (>90°). Wheel should reverse and flip setpoint.
   double speed3 = 1.0;
   double targetRad3 = 170.0 * M_PI / 180.0;
   double targetTurns3 = Drivetrain::ChimiOptimizeAzimuth(targetRad3, 0.0, speed3);
-  // Target was ~ -0.472 turns -> flipped by 0.5 turns gives ~ +0.0278 turns
+  // Target was +0.472 turns -> flipped by 0.5 turns gives -0.0278 turns
   EXPECT_LT(std::abs(targetTurns3), 0.25);
   EXPECT_LT(speed3, 0.0); // Negated drive speed
 }
 
-// Test Rescaled Deadband
+// Test Rescaled Deadband & Radial Deadzone Interpolation (ChimiSwerve Section 3.5)
 TEST(ChimiSwerveMathTest, DeadbandRescaling) {
   auto deadband = [](double val, double d) {
     if (std::abs(val) < d) return 0.0;
@@ -47,9 +47,17 @@ TEST(ChimiSwerveMathTest, DeadbandRescaling) {
   EXPECT_NEAR(deadband(0.55, d), 0.5, 1e-6);
 }
 
-// Test ChimiSwerve Inverse Kinematics
+// Test ChimiSwerve Heading Lock (Section 2.3d, Page 34)
+TEST(ChimiSwerveMathTest, CalcYawStraight) {
+  EXPECT_NEAR(Drivetrain::calcYawStraight(0.0, 0.0, 0.004), 0.0, 1e-6);
+  EXPECT_NEAR(Drivetrain::calcYawStraight(10.0, 0.0, 0.004), 0.04, 1e-6);
+  // Wraparound across +-180 deg
+  EXPECT_NEAR(Drivetrain::calcYawStraight(-175.0, 175.0, 0.004), 0.04, 1e-6);
+}
+
+// Test ChimiSwerve Inverse Kinematics (Section 2.1b, Pages 13-15)
 TEST(ChimiSwerveKinematicsTest, PureTranslationAndRotation) {
-  // 1. Pure forward (FWD = 1, STR = 0, RCW = 0)
+  // 1. Pure forward (FWD = 1, STR = 0, ROT = 0)
   ModuleStates fwd = Drivetrain::InverseKinematics(1.0, 0.0, 0.0);
   EXPECT_NEAR(fwd.wsFL, 1.0, 1e-5);
   EXPECT_NEAR(fwd.wsFR, 1.0, 1e-5);
@@ -60,7 +68,7 @@ TEST(ChimiSwerveKinematicsTest, PureTranslationAndRotation) {
   EXPECT_NEAR(fwd.waBL, 0.0, 1e-5);
   EXPECT_NEAR(fwd.waBR, 0.0, 1e-5);
 
-  // 2. Pure strafe right (FWD = 0, STR = 1, RCW = 0)
+  // 2. Pure strafe right (FWD = 0, STR = 1, ROT = 0)
   ModuleStates str = Drivetrain::InverseKinematics(0.0, 1.0, 0.0);
   EXPECT_NEAR(str.wsFL, 1.0, 1e-5);
   EXPECT_NEAR(str.wsFR, 1.0, 1e-5);
@@ -71,7 +79,7 @@ TEST(ChimiSwerveKinematicsTest, PureTranslationAndRotation) {
   EXPECT_NEAR(str.waBL, M_PI / 2.0, 1e-5);
   EXPECT_NEAR(str.waBR, M_PI / 2.0, 1e-5);
 
-  // 3. Pure clockwise rotation (FWD = 0, STR = 0, RCW = 1)
+  // 3. Pure clockwise rotation (FWD = 0, STR = 0, ROT = 1)
   ModuleStates rot = Drivetrain::InverseKinematics(0.0, 0.0, 1.0);
   EXPECT_NEAR(rot.wsFL, 1.0, 1e-5);
   EXPECT_NEAR(rot.wsFR, 1.0, 1e-5);

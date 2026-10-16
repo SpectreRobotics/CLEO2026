@@ -1,11 +1,12 @@
 // ============================================================================
-// FRC Team 8753 - 2026 Swerve Drivetrain implementation (ChimiSwerve style)
+// FRC Team 8753 - 2026 Swerve Drivetrain Implementation (ChimiSwerve White Paper)
 // ============================================================================
 
 #include "Drivetrain.h"
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 #include <frc/Timer.h>
 #include <frc/smartdashboard/SmartDashboard.h>
@@ -14,19 +15,21 @@
 #include <units/current.h>
 
 using namespace ctre::phoenix6;
+using namespace units::literals;
 namespace DC = DrivetrainConstants;
 
 namespace {
 constexpr double kPi = 3.14159265358979323846;
 
 /// Wheel ground speed (m/s) from drive motor velocity (rotor turns/s).
+/// ChimiSwerve Section 2.2b (Page 18): revolutions/sec / gearRatio * (pi * diameter)
 double WheelMps(double motorRps) {
-  return motorRps / DC::DriveGearRatio * (kPi * DC::WheelDiameter);
+  return (motorRps / DC::DriveGearRatio) * (kPi * DC::WheelDiameter);
 }
 
-/// Kinematic angle (rad, CW+) of a wheel from its steer sensor turns (CCW+).
+/// Kinematic angle (rad, CW+) of a wheel from its fused steer sensor turns.
 double SensorTurnsToKinematicRad(double turns) {
-  return -std::remainder(turns, 1.0) * 2.0 * kPi;
+  return std::remainder(turns, 1.0) * 2.0 * kPi;
 }
 }  // namespace
 
@@ -45,44 +48,74 @@ Drivetrain::Drivetrain()
       CANcoderBR{DC::kBREncoderId, CANBus{DC::kCanBus}} {}
 
 // ============================================================================
-// ConfigureMotors
+// ConfigureMotors (with retry & current magnet offset preservation)
 // ============================================================================
 void Drivetrain::ConfigureMotors() {
   bool ok = true;
 
-  // ---------- Drive motors: brake, current limit, open-loop ramp ----------
-  auto applyDrive = [&](hardware::TalonFX& motor, bool inverted) {
+  auto applyWithRetry = [](hardware::TalonFX& motor,
+                           const configs::TalonFXConfiguration& cfg,
+                           const char* name) -> bool {
+    for (int attempt = 1; attempt <= 5; ++attempt) {
+      auto status = motor.GetConfigurator().Apply(cfg, 100_ms);
+      if (status.IsOK()) {
+        frc::SmartDashboard::PutString(std::string("Swerve/Config_") + name, "OK");
+        return true;
+      }
+      if (attempt == 5) {
+        frc::SmartDashboard::PutString(std::string("Swerve/Config_") + name, status.GetName());
+      }
+    }
+    return false;
+  };
+
+  // ---------- Drive motors: brake, current limit, voltage & open-loop ramps ----------
+  // ChimiSwerve Section 3.6 (Pages 40-41): Ramp rate + current limiting prevent brownouts
+  auto applyDrive = [&](hardware::TalonFX& motor, bool inverted, const char* name) {
     configs::TalonFXConfiguration cfg{};
     cfg.MotorOutput.NeutralMode = signals::NeutralModeValue::Brake;
     cfg.MotorOutput.Inverted = inverted ? signals::InvertedValue::Clockwise_Positive
                                         : signals::InvertedValue::CounterClockwise_Positive;
     cfg.CurrentLimits.StatorCurrentLimit = units::ampere_t{DC::kDriveCurrentLimit};
     cfg.CurrentLimits.StatorCurrentLimitEnable = true;
+    cfg.ClosedLoopRamps.VoltageClosedLoopRampPeriod = units::second_t{DC::DriveRampRateSeconds};
     cfg.OpenLoopRamps.DutyCycleOpenLoopRampPeriod = units::second_t{DC::DriveOpenLoopRamp};
-    ok &= motor.GetConfigurator().Apply(cfg).IsOK();
+    ok &= applyWithRetry(motor, cfg, name);
   };
-  applyDrive(m_FL_Drive, DC::kFLDriveInverted);
-  applyDrive(m_FR_Drive, DC::kFRDriveInverted);
-  applyDrive(m_BL_Drive, DC::kBLDriveInverted);
-  applyDrive(m_BR_Drive, DC::kBRDriveInverted);
+  applyDrive(m_FL_Drive, DC::kFLDriveInverted, "FL_Drive");
+  applyDrive(m_FR_Drive, DC::kFRDriveInverted, "FR_Drive");
+  applyDrive(m_BL_Drive, DC::kBLDriveInverted, "BL_Drive");
+  applyDrive(m_BR_Drive, DC::kBRDriveInverted, "BR_Drive");
 
-  // ---------- CANcoders (only if offsets are managed in code) ----------
+  // ---------- CANcoders: preserve current magnet offsets stored on the robot ----------
   if (DC::kWriteMagnetOffsets) {
     auto applyEncoder = [&](hardware::CANcoder& enc, double offset) {
       configs::CANcoderConfiguration cfg{};
       cfg.MagnetSensor.MagnetOffset = units::turn_t{offset};
       cfg.MagnetSensor.SensorDirection = signals::SensorDirectionValue::CounterClockwise_Positive;
       cfg.MagnetSensor.AbsoluteSensorDiscontinuityPoint = units::turn_t{0.5};
-      ok &= enc.GetConfigurator().Apply(cfg).IsOK();
+      ok &= enc.GetConfigurator().Apply(cfg, 100_ms).IsOK();
     };
     applyEncoder(CANcoderFL, DC::kFLMagnetOffset);
     applyEncoder(CANcoderFR, DC::kFRMagnetOffset);
     applyEncoder(CANcoderBL, DC::kBLMagnetOffset);
     applyEncoder(CANcoderBR, DC::kBRMagnetOffset);
+  } else {
+    // Read and publish the current magnet offsets already stored in each CANcoder
+    auto readOffset = [](hardware::CANcoder& enc, const char* key) {
+      configs::MagnetSensorConfigs magCfg{};
+      if (enc.GetConfigurator().Refresh(magCfg, 50_ms).IsOK()) {
+        frc::SmartDashboard::PutNumber(key, magCfg.MagnetOffset.value());
+      }
+    };
+    readOffset(CANcoderFL, "Swerve/FL_MagnetOffsetTurns");
+    readOffset(CANcoderFR, "Swerve/FR_MagnetOffsetTurns");
+    readOffset(CANcoderBL, "Swerve/BL_MagnetOffsetTurns");
+    readOffset(CANcoderBR, "Swerve/BR_MagnetOffsetTurns");
   }
 
-  // ---------- Steer motors: onboard position loop on the RemoteCANcoder ----------
-  auto applySteer = [&](hardware::TalonFX& motor, int canCoderId) {
+  // ---------- Steer motors: onboard Slot 0 PositionDutyCycle fused with RemoteCANcoder ----------
+  auto applySteer = [&](hardware::TalonFX& motor, int canCoderId, const char* name) {
     configs::TalonFXConfiguration cfg{};
     cfg.MotorOutput.NeutralMode = signals::NeutralModeValue::Brake;
     cfg.MotorOutput.Inverted = DC::kSteerMotorInverted
@@ -101,14 +134,15 @@ void Drivetrain::ConfigureMotors() {
     cfg.Slot0.kP = DC::ModuleP;
     cfg.Slot0.kI = DC::ModuleI;
     cfg.Slot0.kD = DC::ModuleD;
-    ok &= motor.GetConfigurator().Apply(cfg).IsOK();
+    ok &= applyWithRetry(motor, cfg, name);
   };
-  applySteer(m_FL_Steer, DC::kFLEncoderId);
-  applySteer(m_FR_Steer, DC::kFREncoderId);
-  applySteer(m_BL_Steer, DC::kBLEncoderId);
-  applySteer(m_BR_Steer, DC::kBREncoderId);
+  applySteer(m_FL_Steer, DC::kFLEncoderId, "FL_Steer");
+  applySteer(m_FR_Steer, DC::kFREncoderId, "FR_Steer");
+  applySteer(m_BL_Steer, DC::kBLEncoderId, "BL_Steer");
+  applySteer(m_BR_Steer, DC::kBREncoderId, "BR_Steer");
 
   hasBootstrapped = false;
+  m_configsApplied = ok;
   frc::SmartDashboard::PutBoolean("Swerve/ConfigsApplied", ok);
 }
 
@@ -120,6 +154,13 @@ void Drivetrain::DisabledInit() {
 }
 
 void Drivetrain::DisabledPeriodic() {
+  if (!m_configsApplied) {
+    static int retryLoops = 0;
+    if (++retryLoops % 50 == 0) {
+      ConfigureMotors();
+    }
+  }
+
   ReadSteerTurns();
 
   // Keep setpoints equal to where the wheels physically are -> no snap on enable.
@@ -138,56 +179,90 @@ void Drivetrain::DisabledPeriodic() {
 }
 
 // ============================================================================
-// Inverse kinematics (ChimiSwerve / Ether)
+// Inverse Kinematics (ChimiSwerve Section 2.1b, Pages 13-15)
 // ============================================================================
-ModuleStates Drivetrain::InverseKinematics(double FWD, double STR, double RCW) {
-  const double A = STR - RCW * (DC::L / DC::R);
-  const double B = STR + RCW * (DC::L / DC::R);
-  const double C = FWD - RCW * (DC::W / DC::R);
-  const double D = FWD + RCW * (DC::W / DC::R);
+ModuleStates Drivetrain::InverseKinematics(double FWD, double STR, double ROT) {
+  // ChimiSwerve Page 14:
+  //   A = STR - ROT * (L / R)
+  //   B = STR + ROT * (L / R)
+  //   C = FWD - ROT * (W / R)
+  //   D = FWD + ROT * (W / R)
+  const double A = STR - ROT * (DC::L / DC::R);
+  const double B = STR + ROT * (DC::L / DC::R);
+  const double C = FWD - ROT * (DC::W / DC::R);
+  const double D = FWD + ROT * (DC::W / DC::R);
 
   ModuleStates s;
   s.wsFR = std::hypot(B, C);  s.waFR = std::atan2(B, C);
   s.wsFL = std::hypot(B, D);  s.waFL = std::atan2(B, D);
-  s.wsBL = std::hypot(A, D);  s.waBL = std::atan2(A, D);
   s.wsBR = std::hypot(A, C);  s.waBR = std::atan2(A, C);
+  s.wsBL = std::hypot(A, D);  s.waBL = std::atan2(A, D);
 
-  // Normalize so no wheel is commanded above 1.0
-  const double max = std::max({s.wsFL, s.wsFR, s.wsBL, s.wsBR});
-  if (max > 1.0) {
-    s.wsFL /= max; s.wsFR /= max; s.wsBL /= max; s.wsBR /= max;
+  // ChimiSwerve Page 15: Normalize wheel speeds if max > 1.0
+  const double maxSpeed = std::max({s.wsFL, s.wsFR, s.wsBL, s.wsBR});
+  if (maxSpeed > 1.0) {
+    s.wsFL /= maxSpeed;
+    s.wsFR /= maxSpeed;
+    s.wsBL /= maxSpeed;
+    s.wsBR /= maxSpeed;
   }
   return s;
 }
 
 // ============================================================================
-// Azimuth optimization (inversion awareness + cosine scaling)
+// Azimuth Optimization & Inversion Awareness (ChimiSwerve Section 2.1b, Page 16)
 // ============================================================================
 double Drivetrain::ChimiOptimizeAzimuth(double waRad, double currentTurns, double& ws) {
-  // Kinematic angle is CW+, sensor is CCW+ -> negate.
-  const double targetTurns = -waRad / (2.0 * kPi);
+  // Convert target azimuth (radians) to sensor turns
+  const double targetTurns = waRad / (2.0 * kPi);
 
-  // Shortest error in [-0.5, 0.5] turns
+  // ChimiSwerve Page 16: azimuthError = remainder(azimuthAngle - wa)
   double errorTurns = std::remainder(targetTurns - currentTurns, 1.0);
 
-  // More than 90 deg away: point the other way and drive backward instead.
+  // ChimiSwerve Page 16 Inversion Awareness:
+  // If |azimuthError| > 90 deg (0.25 turns), flip azimuth by 180 deg (0.5 turns)
+  // and invert the drive motor speed.
   if (std::abs(errorTurns) > 0.25) {
     errorTurns -= std::copysign(0.5, errorTurns);
     ws = -ws;
   }
 
-  // Don't push while the wheel is still pointing the wrong way.
+  // Cosine scaling: smooths direction transitions so wheels don't scrub while turning
   ws *= std::max(0.0, std::cos(errorTurns * 2.0 * kPi));
 
   return currentTurns + errorTurns;
 }
 
+double Drivetrain::MinimizeRotation(double targetAngleRad, double currentAngleRad, double& speedPercent) {
+  double errorRad = std::remainder(targetAngleRad - currentAngleRad, 2.0 * kPi);
+  if (std::abs(errorRad) > kPi / 2.0) {
+    errorRad -= std::copysign(kPi, errorRad);
+    speedPercent = -speedPercent;
+  }
+  return std::remainder(currentAngleRad + errorRad, 2.0 * kPi);
+}
+
 // ============================================================================
-// Update - main swerve loop
+// Straight-Drive Heading Lock (ChimiSwerve Section 2.3d, Pages 34-35)
+// ============================================================================
+double Drivetrain::calcYawStraight(double targetAngle, double currentAngle, double kP) {
+  const double errorAngle = std::remainder(targetAngle - currentAngle, 360.0);
+  return errorAngle * kP;
+}
+
+// ============================================================================
+// Update - Main ChimiSwerve Control Loop
 // ============================================================================
 void Drivetrain::Update(double x, double y, double x2, double GyroValue,
                         double triggerL, double triggerR, bool FieldCentric) {
   ReadSteerTurns();
+
+  const double now = frc::Timer::GetFPGATimestamp().value();
+  double dt = now - m_lastLoopTime;
+  m_lastLoopTime = now;
+  if (dt <= 0.0001 || dt > 0.5) {
+    dt = 0.02;
+  }
 
   if (!hasBootstrapped) {
     lastTargetTurnsFL = turnsFL;
@@ -195,10 +270,12 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     lastTargetTurnsBL = turnsBL;
     lastTargetTurnsBR = turnsBR;
     storedYaw = GyroValue;
+    m_headingIError = 0.0;
+    m_headingLastError = 0.0;
     hasBootstrapped = true;
   }
 
-  // Live wheel angles/speeds for odometry
+  // Live wheel angles/speeds for odometry (ChimiSwerve Section 2.2b)
   const double waFL = SensorTurnsToKinematicRad(turnsFL);
   const double waFR = SensorTurnsToKinematicRad(turnsFR);
   const double waBL = SensorTurnsToKinematicRad(turnsBL);
@@ -209,47 +286,62 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   const double vBR = WheelMps(m_BR_Drive.GetVelocity().GetValueAsDouble());
   odometryUpdate(waFL, waFR, waBL, waBR, vFL, vFR, vBL, vBR, GyroValue);
 
-  const bool isTranslating = (x != 0.0 || y != 0.0);
-  const bool isRotating = (x2 != 0.0);
+  const bool isTranslating = (std::abs(x) > 1e-3 || std::abs(y) > 1e-3);
+  const bool isRotating = (std::abs(x2) > 1e-3);
 
-  // ---------- Neutral: stop driving, hold wheel angles ----------
+  // ---------- Neutral: stop driving, hold wheel angles, do NOT run heading PID ----------
+  // ChimiSwerve Page 35: "we don't want to PID our angle if we aren't trying to move"
   if (!isTranslating && !isRotating) {
     storedYaw = GyroValue;
+    m_headingIError = 0.0;
+    m_headingLastError = 0.0;
     SetDrive(0.0, 0.0, 0.0, 0.0);
     HoldSteer();
     PublishTelemetry();
     return;
   }
 
-  // ---------- Field-centric transform ----------
+  // ---------- Field-Centric Transformation (ChimiSwerve Section 2.1b, Pages 10-12) ----------
+  //   FWD_new = FWD * cos(theta) + STR * sin(theta)
+  //   STR_new = STR * cos(theta) - FWD * sin(theta)
   double FWD = y;
   double STR = x;
   if (FieldCentric) {
-    const double g = GyroValue * kPi / 180.0;
-    const double temp = FWD * std::cos(g) + STR * std::sin(g);
-    STR = -FWD * std::sin(g) + STR * std::cos(g);
-    FWD = temp;
+    const double theta = GyroValue * kPi / 180.0;
+    const double fwdNew = FWD * std::cos(theta) + STR * std::sin(theta);
+    const double strNew = STR * std::cos(theta) - FWD * std::sin(theta);
+    FWD = fwdNew;
+    STR = strNew;
   }
 
-  // ---------- Rotation / straight-drive heading lock ----------
-  double RCW = 0.0;
+  // ---------- Rotation / Straight-Drive Heading Lock (ChimiSwerve Section 2.3d, Pages 34-35) ----------
+  double ROT = 0.0;
   if (isRotating) {
-    RCW = x2;
+    ROT = x2;
     storedYaw = GyroValue;
-  } else if (DC::kEnableHeadingLock) {
+    m_headingIError = 0.0;
+    m_headingLastError = 0.0;
+  } else if (DC::kEnableHeadingLock && isTranslating) {
     const double errorDeg = std::remainder(storedYaw - GyroValue, 360.0);
-    RCW = std::clamp(errorDeg * DC::straightP, -DC::rotationClamp, DC::rotationClamp);
+    m_headingIError += errorDeg * dt;
+    const double dError = (errorDeg - m_headingLastError) / dt;
+    m_headingLastError = errorDeg;
+
+    const double yawCorrection = calcYawStraight(storedYaw, GyroValue, DC::straightP) +
+                                 DC::straightI * m_headingIError +
+                                 DC::straightD * dError;
+    ROT = std::clamp(yawCorrection, -DC::rotationClamp, DC::rotationClamp);
   }
 
-  // ---------- Kinematics + optimization ----------
-  ModuleStates s = InverseKinematics(FWD, STR, RCW);
+  // ---------- Inverse Kinematics + Inversion Awareness ----------
+  ModuleStates s = InverseKinematics(FWD, STR, ROT);
   lastTargetTurnsFL = ChimiOptimizeAzimuth(s.waFL, turnsFL, s.wsFL);
   lastTargetTurnsFR = ChimiOptimizeAzimuth(s.waFR, turnsFR, s.wsFR);
   lastTargetTurnsBL = ChimiOptimizeAzimuth(s.waBL, turnsBL, s.wsBL);
   lastTargetTurnsBR = ChimiOptimizeAzimuth(s.waBR, turnsBR, s.wsBR);
   HoldSteer();
 
-  // ---------- Speed scaling (triggers) ----------
+  // ---------- Speed Scaling (PS5 L2 / R2 Triggers) ----------
   double pct = DC::DefaultDriveSpeed + (triggerR - triggerL) * DC::TriggerConstant;
   pct = std::clamp(pct, DC::MinDriveSpeed, 100.0);
   const double scale = pct / 100.0;
@@ -264,16 +356,50 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
 }
 
 // ============================================================================
-// Helpers
+// ChimiSwerve Section 3.1 (Page 35): Pre-Match Module Testing in Test Mode
+// ============================================================================
+void Drivetrain::TestZeroAzimuth() {
+  ReadSteerTurns();
+  SetDrive(0.0, 0.0, 0.0, 0.0);
+
+  // Command all wheels to 0 deg (straight forward) along shortest path
+  double dummySpeed = 0.0;
+  lastTargetTurnsFL = ChimiOptimizeAzimuth(0.0, turnsFL, dummySpeed);
+  lastTargetTurnsFR = ChimiOptimizeAzimuth(0.0, turnsFR, dummySpeed);
+  lastTargetTurnsBL = ChimiOptimizeAzimuth(0.0, turnsBL, dummySpeed);
+  lastTargetTurnsBR = ChimiOptimizeAzimuth(0.0, turnsBR, dummySpeed);
+  HoldSteer();
+  PublishTelemetry();
+}
+
+void Drivetrain::TestRotateModules(double dt) {
+  ReadSteerTurns();
+  SetDrive(0.0, 0.0, 0.0, 0.0);
+
+  // Slowly rotate all wheels at 0.25 turns/sec (90 deg/sec) to inspect smooth motion
+  m_testRotateTurns += 0.25 * dt;
+  lastTargetTurnsFL = m_testRotateTurns;
+  lastTargetTurnsFR = m_testRotateTurns;
+  lastTargetTurnsBL = m_testRotateTurns;
+  lastTargetTurnsBR = m_testRotateTurns;
+  HoldSteer();
+  PublishTelemetry();
+}
+
+// ============================================================================
+// Hardware Helpers
 // ============================================================================
 void Drivetrain::ReadSteerTurns() {
-  turnsFL = CANcoderFL.GetPosition().GetValueAsDouble();
-  turnsFR = CANcoderFR.GetPosition().GetValueAsDouble();
-  turnsBL = CANcoderBL.GetPosition().GetValueAsDouble();
-  turnsBR = CANcoderBR.GetPosition().GetValueAsDouble();
+  // Read fused position from the steer TalonFX (configured with RemoteCANcoder,
+  // which automatically includes the CANcoder's stored magnet offset).
+  turnsFL = m_FL_Steer.GetPosition().GetValueAsDouble();
+  turnsFR = m_FR_Steer.GetPosition().GetValueAsDouble();
+  turnsBL = m_BL_Steer.GetPosition().GetValueAsDouble();
+  turnsBR = m_BR_Steer.GetPosition().GetValueAsDouble();
 }
 
 void Drivetrain::HoldSteer() {
+  steerRequest.Slot = 0;
   m_FL_Steer.SetControl(steerRequest.WithPosition(units::turn_t{lastTargetTurnsFL}));
   m_FR_Steer.SetControl(steerRequest.WithPosition(units::turn_t{lastTargetTurnsFR}));
   m_BL_Steer.SetControl(steerRequest.WithPosition(units::turn_t{lastTargetTurnsBL}));
@@ -313,7 +439,7 @@ void Drivetrain::PublishTelemetry() {
 }
 
 // ============================================================================
-// Odometry (forward kinematics)
+// Odometry - ChimiSwerve Forward Kinematics (Section 2.2b, Pages 17-19)
 // ============================================================================
 void Drivetrain::odometryUpdate(double waFL, double waFR, double waBL, double waBR,
                                 double wsFL, double wsFR, double wsBL, double wsBR,
@@ -323,18 +449,45 @@ void Drivetrain::odometryUpdate(double waFL, double waFR, double waBL, double wa
   odoLastTime = now;
   if (dt <= 0.0 || dt > 0.5) return;
 
-  // Robot-relative velocity = average of the four wheel vectors
-  // (rotation components cancel on a symmetric chassis).
-  odoFWD = (wsFL * std::cos(waFL) + wsFR * std::cos(waFR) +
-            wsBL * std::cos(waBL) + wsBR * std::cos(waBR)) / 4.0;
-  odoSTR = (wsFL * std::sin(waFL) + wsFR * std::sin(waFR) +
-            wsBL * std::sin(waBL) + wsBR * std::sin(waBR)) / 4.0;
+  // ChimiSwerve Page 18: Decompose each wheel's velocity into strafe (sin) and forward (cos)
+  const double B_FL = std::sin(waFL) * wsFL;
+  const double D_FL = std::cos(waFL) * wsFL;
 
-  // Robot frame -> field frame (inverse of the field-centric transform)
+  const double B_FR = std::sin(waFR) * wsFR;
+  const double C_FR = std::cos(waFR) * wsFR;
+
+  const double A_BL = std::sin(waBL) * wsBL;
+  const double D_BL = std::cos(waBL) * wsBL;
+
+  const double A_BR = std::sin(waBR) * wsBR;
+  const double C_BR = std::cos(waBR) * wsBR;
+
+  // ChimiSwerve Page 18: Average each pair of components
+  const double A = (A_BR + A_BL) / 2.0;
+  const double B = (B_FL + B_FR) / 2.0;
+  const double C = (C_FR + C_BR) / 2.0;
+  const double D = (D_FL + D_BL) / 2.0;
+
+  // ChimiSwerve Page 19: Rotational velocity estimate (rad/s)
+  const double ROT1 = (B - A) / DC::L;
+  const double ROT2 = (C - D) / DC::W;
+  odoROT = (ROT1 + ROT2) / 2.0;
+
+  // ChimiSwerve Page 19: Incorporate geometry to obtain robot-relative forward & strafe speeds
+  const double STR1 = odoROT * (DC::L / 2.0) + A;
+  const double STR2 = -odoROT * (DC::L / 2.0) + B;
+  odoSTR = (STR1 + STR2) / 2.0;
+
+  const double FWD1 = odoROT * (DC::W / 2.0) + C;
+  const double FWD2 = -odoROT * (DC::W / 2.0) + D;
+  odoFWD = (FWD1 + FWD2) / 2.0;
+
+  // Transform robot-relative velocities into field-relative coordinates
   const double g = GyroValue * kPi / 180.0;
   const double fieldFWD = odoFWD * std::cos(g) - odoSTR * std::sin(g);
   const double fieldSTR = odoFWD * std::sin(g) + odoSTR * std::cos(g);
 
+  // ChimiSwerve Page 19: Integrate over timestep
   positionFWDField += fieldFWD * dt;
   positionSTRField += fieldSTR * dt;
 
@@ -342,10 +495,12 @@ void Drivetrain::odometryUpdate(double waFL, double waFR, double waBL, double wa
   frc::SmartDashboard::PutNumber("Odometry/FieldSTR", positionSTRField);
   frc::SmartDashboard::PutNumber("Odometry/RobotFWD_mps", odoFWD);
   frc::SmartDashboard::PutNumber("Odometry/RobotSTR_mps", odoSTR);
+  frc::SmartDashboard::PutNumber("PositionForwardField", positionFWDField);
+  frc::SmartDashboard::PutNumber("PositionStrafeField", positionSTRField);
 }
 
 // ============================================================================
-// Simulation: wheels snap to their setpoints, drive speed follows duty
+// Simulation: wheels follow setpoints, drive speed follows duty cycle
 // ============================================================================
 void Drivetrain::UpdateSim(units::time::second_t dt) {
   constexpr double kMaxRps = 100.0;  // rotor turns/s at full duty
@@ -362,6 +517,11 @@ void Drivetrain::UpdateSim(units::time::second_t dt) {
   simDrive(m_FR_Drive, DC::kFRDriveInverted, cmdFR);
   simDrive(m_BL_Drive, DC::kBLDriveInverted, cmdBL);
   simDrive(m_BR_Drive, DC::kBRDriveInverted, cmdBR);
+
+  m_FL_Steer.GetSimState().SetRawRotorPosition(units::turn_t{lastTargetTurnsFL * DC::rotorToSensorRatio});
+  m_FR_Steer.GetSimState().SetRawRotorPosition(units::turn_t{lastTargetTurnsFR * DC::rotorToSensorRatio});
+  m_BL_Steer.GetSimState().SetRawRotorPosition(units::turn_t{lastTargetTurnsBL * DC::rotorToSensorRatio});
+  m_BR_Steer.GetSimState().SetRawRotorPosition(units::turn_t{lastTargetTurnsBR * DC::rotorToSensorRatio});
 
   CANcoderFL.GetSimState().SetRawPosition(units::turn_t{lastTargetTurnsFL});
   CANcoderFR.GetSimState().SetRawPosition(units::turn_t{lastTargetTurnsFR});
