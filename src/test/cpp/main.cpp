@@ -16,7 +16,7 @@ namespace DC = DrivetrainConstants;
 TEST(ChimiSwerveConfigTest, CanIdsAndBusesMatchRobotTopology) {
   // CAN bus names
   EXPECT_STREQ(DC::kCanBus, "rio");
-  EXPECT_STREQ(DC::kIntakeCanBus, "intake");
+  EXPECT_STREQ(DC::kIntakeCanBus, "intakebus");
   EXPECT_STREQ(DC::kTophalfCanBus, "Tophalf");
 
   // Swerve module CAN IDs

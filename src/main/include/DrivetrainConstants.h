@@ -21,11 +21,11 @@
 
 namespace DrivetrainConstants {
   // ---------- CAN bus names ----------
-  //   "rio"     = roboRIO built-in CAN bus (all swerve drive/steer motors, CANcoders 12/22/42, Pigeon2)
-  //   "intake"  = Intake CANivore (IntakeMotor 54, RollerbedMotor 56, and Swerve 3 FL CANcoder 32)
-  //   "Tophalf" = Tophalf CANivore (Feeders 55/57, Indexer 50, Outtake 60/61)
+  //   "rio"       = roboRIO built-in CAN bus (all swerve drive/steer motors, CANcoders 12/22/42, Pigeon2)
+  //   "intakebus" = Intake CANivore (IntakeMotor 54, RollerbedMotor 56, and Swerve 3 FL CANcoder 32)
+  //   "Tophalf"   = Tophalf CANivore (Feeders 55/57, Indexer 50, Outtake 60/61)
   inline constexpr const char* kCanBus = "rio";
-  inline constexpr const char* kIntakeCanBus = "intake";
+  inline constexpr const char* kIntakeCanBus = "intakebus";
   inline constexpr const char* kTophalfCanBus = "Tophalf";
 
   // ---------- Swerve Module CAN IDs ----------
