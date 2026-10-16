@@ -14,10 +14,19 @@
 #include <ctre/phoenix6/controls/DutyCycleOut.hpp>
 #include <ctre/phoenix6/controls/PositionDutyCycle.hpp>
 #include <frc/geometry/Rotation2d.h>
+#include <frc/geometry/Translation2d.h>
+#include <frc/geometry/Pose2d.h>
+#include <frc/kinematics/SwerveDriveKinematics.h>
+#include <frc/kinematics/SwerveDriveOdometry.h>
+#include <frc/kinematics/SwerveModuleState.h>
+#include <frc/kinematics/SwerveModulePosition.h>
+#include <frc/kinematics/ChassisSpeeds.h>
 #include <frc/Timer.h>
 #include <frc/DriverStation.h>
 #include <units/length.h>
 #include <units/time.h>
+#include <units/velocity.h>
+#include <units/angular_velocity.h>
 
 #include "DrivetrainConstants.h"
 
@@ -100,11 +109,25 @@ class Drivetrain {
   ctre::phoenix6::hardware::TalonFX m_BL_Steer{41};
   ctre::phoenix6::hardware::TalonFX m_BR_Steer{11};
 
-  // CANcoders *2
-  ctre::phoenix6::hardware::CANcoder CANcoderFL{32};
-  ctre::phoenix6::hardware::CANcoder CANcoderFR{22};
-  ctre::phoenix6::hardware::CANcoder CANcoderBL{42};
-  ctre::phoenix6::hardware::CANcoder CANcoderBR{12};
+  // CANcoders *2 (FL CANcoder 32 on "intakebus", FR/BL/BR on "rio")
+  ctre::phoenix6::hardware::CANcoder CANcoderFL{32, ctre::phoenix6::CANBus{DrivetrainConstants::kIntakeCanBus}};
+  ctre::phoenix6::hardware::CANcoder CANcoderFR{22, ctre::phoenix6::CANBus{DrivetrainConstants::kCanBus}};
+  ctre::phoenix6::hardware::CANcoder CANcoderBL{42, ctre::phoenix6::CANBus{DrivetrainConstants::kCanBus}};
+  ctre::phoenix6::hardware::CANcoder CANcoderBR{12, ctre::phoenix6::CANBus{DrivetrainConstants::kCanBus}};
+
+  double GetFLCANcoderTurns();
+
+  // WPILib 4-Module Swerve Kinematics & Odometry
+  frc::Translation2d m_flLocation{units::meter_t{DrivetrainConstants::L / 2.0}, units::meter_t{DrivetrainConstants::W / 2.0}};
+  frc::Translation2d m_frLocation{units::meter_t{DrivetrainConstants::L / 2.0}, units::meter_t{-DrivetrainConstants::W / 2.0}};
+  frc::Translation2d m_blLocation{units::meter_t{-DrivetrainConstants::L / 2.0}, units::meter_t{DrivetrainConstants::W / 2.0}};
+  frc::Translation2d m_brLocation{units::meter_t{-DrivetrainConstants::L / 2.0}, units::meter_t{-DrivetrainConstants::W / 2.0}};
+  frc::SwerveDriveKinematics<4> m_kinematics{m_flLocation, m_frLocation, m_blLocation, m_brLocation};
+  frc::SwerveDriveOdometry<4> m_odometry{
+      m_kinematics,
+      frc::Rotation2d{0_deg},
+      {frc::SwerveModulePosition{}, frc::SwerveModulePosition{},
+       frc::SwerveModulePosition{}, frc::SwerveModulePosition{}}};
 
  private:
   ctre::phoenix6::configs::Slot0Configs Posconfig{};
