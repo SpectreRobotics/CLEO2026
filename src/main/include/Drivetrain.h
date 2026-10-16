@@ -32,18 +32,18 @@ class Drivetrain {
  public:
   Drivetrain();
 
-  /// Apply drive/steer TalonFX configs while preserving current CANcoder magnet offsets.
+  /// Configure drive and steer motors (sensor fusion, ramps, PID, and CANcoder magnet offsets).
   void ConfigureMotors();
   bool AreConfigsApplied() const { return m_configsApplied; }
 
   /// Stop drive motors when entering Disabled.
   void DisabledInit();
 
-  /// Track live wheel angles so enabling never snaps the wheels; retry configs if needed.
+  /// Track live wheel angles and sync FL steer in Disabled so enabling never snaps the wheels.
   void DisabledPeriodic();
 
   /**
-   * Main ChimiSwerve control loop (call from TeleopPeriodic / AutonomousPeriodic).
+   * Main swerve drive control loop (call from TeleopPeriodic / AutonomousPeriodic).
    * @param x            STR (strafe),   +1.0 = full right
    * @param y            FWD (forward),  +1.0 = full forward
    * @param x2           ROT (rotation), +1.0 = full clockwise
@@ -55,23 +55,23 @@ class Drivetrain {
   void Update(double x, double y, double x2, double GyroValue,
               double triggerL, double triggerR, bool FieldCentric);
 
-  /// ChimiSwerve Section 3.1: Command all wheels to 0 deg (straight forward) in Test Mode.
+  /// Test Mode helper: command all modules to 0 deg (straight ahead).
   void TestZeroAzimuth();
 
-  /// ChimiSwerve Section 3.1: Slowly rotate all wheels in Test Mode to verify smooth steering.
+  /// Test Mode helper: slowly rotate all modules in a circle.
   void TestRotateModules(double dt);
 
-  /// Re-latch the heading-lock target (call after resetting the gyro).
+  /// Re-latch the heading-lock target (call after resetting gyro).
   void ResetHeading(double GyroValue) {
     storedYaw = GyroValue;
     m_headingIError = 0.0;
     m_headingLastError = 0.0;
   }
 
-  /// Zero field odometry (ChimiSwerve Section 2.2b Page 20).
+  /// Zero field odometry.
   void ResetOdometry() {
-    positionFWDField = 0.0;
-    positionSTRField = 0.0;
+    positionFWDField = units::length::meter_t(0);
+    positionSTRField = units::length::meter_t(0);
     odoFWD = 0.0;
     odoSTR = 0.0;
     odoROT = 0.0;
@@ -79,29 +79,28 @@ class Drivetrain {
 
   void UpdateSim(units::time::second_t dt);
 
-  // ---------- Pure ChimiSwerve Math Helpers (static for unit testing) ----------
-
-  /// ChimiSwerve Section 2.1b (Pages 13-15): Inverse kinematics + wheel speed normalization.
+  // ---------- Math Helpers (public & static for unit tests) ----------
   static ModuleStates InverseKinematics(double FWD, double STR, double ROT);
-
-  /**
-   * ChimiSwerve Section 2.1b (Page 16): Inversion awareness + cosine scaling.
-   * Returns a continuous steer setpoint (turns) never more than 0.25 turns (90 deg)
-   * from currentTurns, inverting ws when flipped by 180 deg.
-   */
   static double ChimiOptimizeAzimuth(double waRad, double currentTurns, double& ws);
-
-  /// Radian wrapper around ChimiSwerve inversion awareness (compatible with legacy callers).
   static double MinimizeRotation(double targetAngleRad, double currentAngleRad, double& speedPercent);
-
-  /// ChimiSwerve Section 2.3d (Page 34): Proportional heading-lock correction.
+  static double MinimizeRotation(double targetAngleRad, double currentAngleRad);
+  static double WrapError(double targetAngle, double currentAngle);
   static double calcYawStraight(double targetAngle, double currentAngle, double kP);
 
-  // ---------- Odometry (meters, field frame, +FWD away from driver, +STR right) ----------
-  double GetFieldFWD() const { return positionFWDField; }
-  double GetFieldSTR() const { return positionSTRField; }
+  // ---------- Odometry (meters, field frame) ----------
+  double GetFieldFWD() const { return positionFWDField.value(); }
+  double GetFieldSTR() const { return positionSTRField.value(); }
 
-  // ---------- Hardware (Current CAN IDs from DrivetrainConstants) ----------
+  units::length::meter_t positionFWDField = units::length::meter_t(0);
+  units::length::meter_t positionSTRField = units::length::meter_t(0);
+  frc::Rotation2d ROTField = frc::Rotation2d(units::radian_t(0));
+  double odoSTR = 0.0;
+  double odoFWD = 0.0;
+  double odoROT = 0.0;
+  double odoDeltaTime = 0.0;
+  units::time::second_t odoLastTime = units::time::second_t(0);
+
+  // ---------- Hardware (Matching current CLEO CAN IDs) ----------
   // Module 3 (FL): 30/31/32 | Module 2 (FR): 20/21/22 | Module 4 (BL): 40/41/42 | Module 1 (BR): 10/11/12
   ctre::phoenix6::hardware::TalonFX m_FL_Drive;
   ctre::phoenix6::hardware::TalonFX m_FR_Drive;
@@ -118,43 +117,31 @@ class Drivetrain {
   ctre::phoenix6::hardware::CANcoder CANcoderBL;
   ctre::phoenix6::hardware::CANcoder CANcoderBR;
 
-  // Public odometry state
-  double positionFWDField = 0.0;
-  double positionSTRField = 0.0;
-  double odoFWD = 0.0;  ///< robot-relative forward velocity (m/s)
-  double odoSTR = 0.0;  ///< robot-relative strafe velocity (m/s)
-  double odoROT = 0.0;  ///< rotational velocity (rad/s)
-
  private:
-  void odometryUpdate(double waFL, double waFR, double waBL, double waBR,
-                      double wsFL, double wsFR, double wsBL, double wsBR,
-                      double GyroValue);
-  void HoldSteer();
-  void StopSteer();
+  void odometryUpdate(double angleFL, double angleFR, double angleBL, double angleBR,
+                      double wheelSpeedFL, double wheelSpeedFR, double wheelSpeedBL,
+                      double wheelSpeedBR, double GyroValue);
   void SyncFLSteerToCANcoder();
-  void SetDrive(double fl, double fr, double bl, double br);
-  void ReadSteerTurns();
   void PublishTelemetry();
 
-  ctre::phoenix6::controls::PositionDutyCycle steerRequest{units::angle::turn_t{0}};
-  ctre::phoenix6::controls::DutyCycleOut steerDutyRequest{0.0};
-  ctre::phoenix6::controls::DutyCycleOut driveRequest{0.0};
+  // ---------- Module angles & speeds ----------
+  double tempangleFL = 0.0, tempangleFR = 0.0, tempangleBL = 0.0, tempangleBR = 0.0;
+  double angleFL = 0.0, angleFR = 0.0, angleBL = 0.0, angleBR = 0.0;
+  double speedFL = 0.0, speedFR = 0.0, speedBL = 0.0, speedBR = 0.0;
+  double cmdFL = 0.0, cmdFR = 0.0, cmdBL = 0.0, cmdBR = 0.0;
 
-  // ---------- Module state ----------
-  double turnsFL = 0, turnsFR = 0, turnsBL = 0, turnsBR = 0;  ///< live fused steer position (turns)
-  double lastTargetTurnsFL = 0, lastTargetTurnsFR = 0;
-  double lastTargetTurnsBL = 0, lastTargetTurnsBR = 0;
-  double cmdFL = 0, cmdFR = 0, cmdBL = 0, cmdBR = 0;          ///< last drive duty cycle
+  double turnsFL = 0.0, turnsFR = 0.0, turnsBL = 0.0, turnsBR = 0.0;
+  double lastTargetTurnsFL = 0.0, lastTargetTurnsFR = 0.0;
+  double lastTargetTurnsBL = 0.0, lastTargetTurnsBR = 0.0;
+
   bool hasBootstrapped = false;
   bool m_configsApplied = false;
 
-  // ---------- Heading lock state (ChimiSwerve Sec 2.3d) ----------
-  double storedYaw = 0.0;  ///< target heading (deg, CW+)
+  // Heading lock state
+  double storedYaw = 0.0;
   double m_headingIError = 0.0;
   double m_headingLastError = 0.0;
-  double m_lastLoopTime = 0.0;
 
-  // ---------- Odometry & Test state ----------
-  double odoLastTime = 0.0;
+  units::time::second_t lastTime = units::time::second_t(0);
   double m_testRotateTurns = 0.0;
 };
