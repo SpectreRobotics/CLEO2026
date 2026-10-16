@@ -207,13 +207,26 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   stateBL.CosineScale(currentAngleBL);
   stateBR.CosineScale(currentAngleBR);
 
-  // 7. Apply steer setpoints via PositionDutyCycle (ContinuousWrap handles shortest path)
+  // 7. Apply steer setpoints with encoder deadband (ContinuousWrap handles shortest path)
   controls::PositionDutyCycle steerCmd{0_tr};
   steerCmd.Slot = 0;
-  m_FL_Steer.SetControl(steerCmd.WithPosition(units::turn_t{stateFL.angle.Degrees() / 360_deg}));
-  m_FR_Steer.SetControl(steerCmd.WithPosition(units::turn_t{stateFR.angle.Degrees() / 360_deg}));
-  m_BL_Steer.SetControl(steerCmd.WithPosition(units::turn_t{stateBL.angle.Degrees() / 360_deg}));
-  m_BR_Steer.SetControl(steerCmd.WithPosition(units::turn_t{stateBR.angle.Degrees() / 360_deg}));
+
+  auto applySteerDeadband = [&](hardware::TalonFX& motor,
+                                const frc::SwerveModuleState& targetState,
+                                const frc::Rotation2d& currentAngle) {
+    const double targetTurns = targetState.angle.Degrees() / 360_deg;
+    const double currentTurns = currentAngle.Degrees() / 360_deg;
+    const double errorTurns = std::remainder(targetTurns - currentTurns, 1.0);
+    // Only command steer motor if error exceeds encoder deadband
+    if (std::abs(errorTurns) > DC::kSteerDeadbandTurns) {
+      motor.SetControl(steerCmd.WithPosition(units::turn_t{targetTurns}));
+    }
+  };
+
+  applySteerDeadband(m_FL_Steer, stateFL, currentAngleFL);
+  applySteerDeadband(m_FR_Steer, stateFR, currentAngleFR);
+  applySteerDeadband(m_BL_Steer, stateBL, currentAngleBL);
+  applySteerDeadband(m_BR_Steer, stateBR, currentAngleBR);
 
   // 8. Apply drive speeds (Left side inverted, right side positive on this chassis)
   const double outFL = (stateFL.speed / kMaxSpeed).value();
@@ -281,7 +294,7 @@ double Drivetrain::ChimiOptimizeAzimuth(double waRad, double currentTurns, doubl
     errorTurns -= std::copysign(0.5, errorTurns);
     ws = -ws;
   }
-  if (std::abs(errorTurns) < DC::kSteerDeadbandTurns) {
+  if (std::abs(errorTurns) < 0.003) {
     errorTurns = 0.0;
   }
   return currentTurns + errorTurns;
