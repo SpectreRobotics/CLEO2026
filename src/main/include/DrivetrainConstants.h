@@ -22,14 +22,14 @@
 namespace DrivetrainConstants {
   // ---------- CAN bus names ----------
   //   "rio"       = roboRIO built-in CAN bus (all swerve drive/steer motors, CANcoders 12/22/42, Pigeon2)
-  //   "intakebus" = Intake CANivore (IntakeMotor 54, RollerbedMotor 56, and Swerve 3 FL CANcoder 32)
+  //   "intakebus" = Intake CANivore (Swerve 3 FL CANcoder 32; also IntakeMotor 54, RollerbedMotor 56)
   //   "Tophalf"   = Tophalf CANivore (Feeders 55/57, Indexer 50, Outtake 60/61)
   inline constexpr const char* kCanBus = "rio";
   inline constexpr const char* kIntakeCanBus = "intakebus";
-  inline constexpr const char* kTophalfCanBus = "Tophalf";
+  // inline constexpr const char* kTophalfCanBus = "Tophalf";
 
   // ---------- Swerve Module CAN IDs ----------
-  // Swerve 3 (Front Left):  Drive 30 ("rio"), Steer 31 ("rio"), CANcoder 32 ("intake")
+  // Swerve 3 (Front Left):  Drive 30 ("rio"), Steer 31 ("rio"), CANcoder 32 ("intakebus")
   // Swerve 2 (Front Right): Drive 20 ("rio"), Steer 21 ("rio"), CANcoder 22 ("rio")
   // Swerve 4 (Back Left):   Drive 40 ("rio"), Steer 41 ("rio"), CANcoder 42 ("rio")
   // Swerve 1 (Back Right):  Drive 10 ("rio"), Steer 11 ("rio"), CANcoder 12 ("rio")
@@ -39,14 +39,14 @@ namespace DrivetrainConstants {
   inline constexpr int kBRDriveId = 10, kBRSteerId = 11, kBREncoderId = 12;
   inline constexpr int kPigeonId = 2;
 
-  // ---------- Mechanism Motor CAN IDs ----------
-  inline constexpr int kIndexerMotorId = 50;
-  inline constexpr int kIntakeMotorId = 54;
-  inline constexpr int kBottomFeederMotorId = 55;
-  inline constexpr int kRollerbedMotorId = 56;
-  inline constexpr int kTopFeederMotorId = 57;
-  inline constexpr int kOuttakeLeftMotorId = 60;
-  inline constexpr int kOuttakeRightMotorId = 61;
+  // ---------- Mechanism Motor CAN IDs (Commented out - Swerve only) ----------
+  // inline constexpr int kIndexerMotorId = 50;
+  // inline constexpr int kIntakeMotorId = 54;
+  // inline constexpr int kBottomFeederMotorId = 55;
+  // inline constexpr int kRollerbedMotorId = 56;
+  // inline constexpr int kTopFeederMotorId = 57;
+  // inline constexpr int kOuttakeLeftMotorId = 60;
+  // inline constexpr int kOuttakeRightMotorId = 61;
 
   // ---------- Robot dimensions (wheel center to wheel center, meters) ----------
   // ChimiSwerve Section 2.1b (Page 13): L = wheelbase, W = trackwidth, R = sqrt(L^2 + W^2)

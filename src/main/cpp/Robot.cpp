@@ -126,35 +126,35 @@ void Robot::TeleopPeriodic() {
 
   m_swerve.Update(x, y, x2, GyroValue, triggerL, triggerR, FieldCentric);
 
-  // ========== Mechanism Controls (Fixed CAN IDs from Robot.h) ==========
-  // Shooting / Outtake control using right trigger (R2)
-  if (triggerR > 0.05) {
-    BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
-    TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
-    OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
-    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{-0.70});
-  } else {
-    BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
-    TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
-    OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
-    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
-  }
-
-  // Intake control using left trigger (L2)
-  if (triggerL > 0.05) {
-    IntakeMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
-    RollerbedMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
-  } else {
-    IntakeMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
-    RollerbedMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
-  }
-
-  // Shared indexer control, runs if either trigger is pressed
-  if (triggerR > 0.05 || triggerL > 0.05) {
-    IndexerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
-  } else {
-    IndexerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
-  }
+  // ========== Mechanism Controls (Commented out - Swerve only) ==========
+  // // Shooting / Outtake control using right trigger (R2)
+  // if (triggerR > 0.05) {
+  //   BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
+  //   TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
+  //   OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
+  //   OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{-0.70});
+  // } else {
+  //   BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  //   TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  //   OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  //   OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  // }
+  //
+  // // Intake control using left trigger (L2)
+  // if (triggerL > 0.05) {
+  //   IntakeMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
+  //   RollerbedMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
+  // } else {
+  //   IntakeMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  //   RollerbedMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  // }
+  //
+  // // Shared indexer control, runs if either trigger is pressed
+  // if (triggerR > 0.05 || triggerL > 0.05) {
+  //   IndexerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
+  // } else {
+  //   IndexerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  // }
 }
 
 void Robot::DisabledInit() {

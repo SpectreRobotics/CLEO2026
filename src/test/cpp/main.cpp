@@ -17,7 +17,7 @@ TEST(ChimiSwerveConfigTest, CanIdsAndBusesMatchRobotTopology) {
   // CAN bus names
   EXPECT_STREQ(DC::kCanBus, "rio");
   EXPECT_STREQ(DC::kIntakeCanBus, "intakebus");
-  EXPECT_STREQ(DC::kTophalfCanBus, "Tophalf");
+  // EXPECT_STREQ(DC::kTophalfCanBus, "Tophalf");
 
   // Swerve module CAN IDs
   // Swerve 1 (BR): 10, 11, 12
@@ -43,14 +43,14 @@ TEST(ChimiSwerveConfigTest, CanIdsAndBusesMatchRobotTopology) {
   // Pigeon2 IMU
   EXPECT_EQ(DC::kPigeonId, 2);
 
-  // Mechanism CAN IDs
-  EXPECT_EQ(DC::kIndexerMotorId, 50);
-  EXPECT_EQ(DC::kIntakeMotorId, 54);
-  EXPECT_EQ(DC::kBottomFeederMotorId, 55);
-  EXPECT_EQ(DC::kRollerbedMotorId, 56);
-  EXPECT_EQ(DC::kTopFeederMotorId, 57);
-  EXPECT_EQ(DC::kOuttakeLeftMotorId, 60);
-  EXPECT_EQ(DC::kOuttakeRightMotorId, 61);
+  // Mechanism CAN IDs (Commented out - Swerve only)
+  // EXPECT_EQ(DC::kIndexerMotorId, 50);
+  // EXPECT_EQ(DC::kIntakeMotorId, 54);
+  // EXPECT_EQ(DC::kBottomFeederMotorId, 55);
+  // EXPECT_EQ(DC::kRollerbedMotorId, 56);
+  // EXPECT_EQ(DC::kTopFeederMotorId, 57);
+  // EXPECT_EQ(DC::kOuttakeLeftMotorId, 60);
+  // EXPECT_EQ(DC::kOuttakeRightMotorId, 61);
 }
 
 TEST(ChimiSwerveConfigTest, MagnetOffsetsWithinValidPhoenixRange) {

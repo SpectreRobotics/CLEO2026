@@ -79,24 +79,24 @@ class Robot : public frc::TimedRobot {
 
   frc::SendableChooser<std::string> m_driveModeChooser;
 
-  // ========== Mechanism Motors (Fixed CAN IDs & CAN Buses) ==========
-  // "Tophalf" CAN bus: Feeders, Indexer, Outtake
-  ctre::phoenix6::hardware::TalonFX BottomFeederMotor{DrivetrainConstants::kBottomFeederMotorId,
-                                                      ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
-  ctre::phoenix6::hardware::TalonFX TopFeederMotor{DrivetrainConstants::kTopFeederMotorId,
-                                                   ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
-  ctre::phoenix6::hardware::TalonFX IndexerMotor{DrivetrainConstants::kIndexerMotorId,
-                                                 ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
-  ctre::phoenix6::hardware::TalonFX OuttakeLeft{DrivetrainConstants::kOuttakeLeftMotorId,
-                                                ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
-  ctre::phoenix6::hardware::TalonFX OuttakeRight{DrivetrainConstants::kOuttakeRightMotorId,
-                                                 ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
-
-  // "intake" CAN bus: Intake and Rollerbed
-  ctre::phoenix6::hardware::TalonFX IntakeMotor{DrivetrainConstants::kIntakeMotorId,
-                                                ctre::phoenix6::CANBus{DrivetrainConstants::kIntakeCanBus}};
-  ctre::phoenix6::hardware::TalonFX RollerbedMotor{DrivetrainConstants::kRollerbedMotorId,
-                                                   ctre::phoenix6::CANBus{DrivetrainConstants::kIntakeCanBus}};
+  // ========== Mechanism Motors (Commented out - Swerve only) ==========
+  // // "Tophalf" CAN bus: Feeders, Indexer, Outtake
+  // ctre::phoenix6::hardware::TalonFX BottomFeederMotor{DrivetrainConstants::kBottomFeederMotorId,
+  //                                                     ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
+  // ctre::phoenix6::hardware::TalonFX TopFeederMotor{DrivetrainConstants::kTopFeederMotorId,
+  //                                                  ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
+  // ctre::phoenix6::hardware::TalonFX IndexerMotor{DrivetrainConstants::kIndexerMotorId,
+  //                                                ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
+  // ctre::phoenix6::hardware::TalonFX OuttakeLeft{DrivetrainConstants::kOuttakeLeftMotorId,
+  //                                               ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
+  // ctre::phoenix6::hardware::TalonFX OuttakeRight{DrivetrainConstants::kOuttakeRightMotorId,
+  //                                                ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
+  //
+  // // "intakebus" CAN bus: Intake and Rollerbed
+  // ctre::phoenix6::hardware::TalonFX IntakeMotor{DrivetrainConstants::kIntakeMotorId,
+  //                                               ctre::phoenix6::CANBus{DrivetrainConstants::kIntakeCanBus}};
+  // ctre::phoenix6::hardware::TalonFX RollerbedMotor{DrivetrainConstants::kRollerbedMotorId,
+  //                                                  ctre::phoenix6::CANBus{DrivetrainConstants::kIntakeCanBus}};
 
   int GetDriverPort() const;
 };
