@@ -13,6 +13,8 @@
 #include <ctre/phoenix6/TalonFX.hpp>
 #include <ctre/phoenix6/controls/DutyCycleOut.hpp>
 #include <ctre/phoenix6/controls/PositionDutyCycle.hpp>
+#include <frc/controller/ProfiledPIDController.h>
+#include <frc/trajectory/TrapezoidProfile.h>
 #include <frc/geometry/Rotation2d.h>
 #include <frc/geometry/Translation2d.h>
 #include <frc/geometry/Pose2d.h>
@@ -23,10 +25,12 @@
 #include <frc/kinematics/ChassisSpeeds.h>
 #include <frc/Timer.h>
 #include <frc/DriverStation.h>
+#include <units/angle.h>
 #include <units/length.h>
 #include <units/time.h>
 #include <units/velocity.h>
 #include <units/angular_velocity.h>
+#include <units/angular_acceleration.h>
 
 #include "DrivetrainConstants.h"
 
@@ -116,6 +120,9 @@ class Drivetrain {
   ctre::phoenix6::hardware::CANcoder CANcoderBR{12, ctre::phoenix6::CANBus{DrivetrainConstants::kCanBus}};
 
   double GetFLCANcoderTurns();
+  double GetModuleTurns(ctre::phoenix6::hardware::CANcoder& encoder,
+                        ctre::phoenix6::hardware::TalonFX& motor,
+                        bool isFL);
 
   // WPILib 4-Module Swerve Kinematics & Odometry
   frc::Translation2d m_flLocation{units::meter_t{DrivetrainConstants::L / 2.0}, units::meter_t{DrivetrainConstants::W / 2.0}};
@@ -130,6 +137,26 @@ class Drivetrain {
        frc::SwerveModulePosition{}, frc::SwerveModulePosition{}}};
 
  private:
+  // Jagwires7443/Swerve roboRIO Turning ProfiledPIDController constants (in degrees)
+  static constexpr double kTurningPositionP = 0.005;
+  static constexpr double kTurningPositionI = 0.0;
+  static constexpr double kTurningPositionD = 0.0;
+  static constexpr units::degrees_per_second_t kTurningMaxVelocity{1250.0};
+  static constexpr units::degrees_per_second_squared_t kTurningMaxAcceleration{12500.0};
+
+  frc::ProfiledPIDController<units::angle::degrees> m_turningPID_FL{
+      kTurningPositionP, kTurningPositionI, kTurningPositionD,
+      frc::TrapezoidProfile<units::angle::degrees>::Constraints{kTurningMaxVelocity, kTurningMaxAcceleration}};
+  frc::ProfiledPIDController<units::angle::degrees> m_turningPID_FR{
+      kTurningPositionP, kTurningPositionI, kTurningPositionD,
+      frc::TrapezoidProfile<units::angle::degrees>::Constraints{kTurningMaxVelocity, kTurningMaxAcceleration}};
+  frc::ProfiledPIDController<units::angle::degrees> m_turningPID_BL{
+      kTurningPositionP, kTurningPositionI, kTurningPositionD,
+      frc::TrapezoidProfile<units::angle::degrees>::Constraints{kTurningMaxVelocity, kTurningMaxAcceleration}};
+  frc::ProfiledPIDController<units::angle::degrees> m_turningPID_BR{
+      kTurningPositionP, kTurningPositionI, kTurningPositionD,
+      frc::TrapezoidProfile<units::angle::degrees>::Constraints{kTurningMaxVelocity, kTurningMaxAcceleration}};
+
   ctre::phoenix6::configs::Slot0Configs Posconfig{};
   ctre::phoenix6::configs::TalonFXConfiguration driveConfig{};
   ctre::phoenix6::configs::TalonFXConfiguration configFL{};

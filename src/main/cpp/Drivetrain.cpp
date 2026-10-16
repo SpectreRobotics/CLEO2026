@@ -26,6 +26,12 @@ Drivetrain::Drivetrain() {
   positionFWDField = units::length::meter_t(0);
   positionSTRField = units::length::meter_t(0);
 
+  // Enable continuous wrap [-180 deg, +180 deg] on roboRIO turning PID controllers (Jagwires7443/Swerve)
+  m_turningPID_FL.EnableContinuousInput(-180.0_deg, 180.0_deg);
+  m_turningPID_FR.EnableContinuousInput(-180.0_deg, 180.0_deg);
+  m_turningPID_BL.EnableContinuousInput(-180.0_deg, 180.0_deg);
+  m_turningPID_BR.EnableContinuousInput(-180.0_deg, 180.0_deg);
+
   ConfigureMotors();
 }
 
@@ -34,7 +40,22 @@ double Drivetrain::GetFLCANcoderTurns() {
     return CANcoderFL.GetPosition().GetValueAsDouble();
   }
   static hardware::CANcoder rioCANcoder32{DC::kFLEncoderId, CANBus{DC::kCanBus}};
-  return rioCANcoder32.GetPosition().GetValueAsDouble();
+  if (rioCANcoder32.IsConnected()) {
+    return rioCANcoder32.GetPosition().GetValueAsDouble();
+  }
+  return CANcoderFL.GetPosition().GetValueAsDouble();
+}
+
+double Drivetrain::GetModuleTurns(hardware::CANcoder& encoder,
+                                  hardware::TalonFX& motor,
+                                  bool isFL) {
+  if (isFL) {
+    return GetFLCANcoderTurns();
+  }
+  if (encoder.IsConnected()) {
+    return encoder.GetPosition().GetValueAsDouble();
+  }
+  return motor.GetPosition().GetValueAsDouble();
 }
 
 void Drivetrain::ConfigureMotors() {
@@ -50,13 +71,15 @@ void Drivetrain::ConfigureMotors() {
   m_BL_Drive.GetConfigurator().Apply(driveConfig);
   m_BR_Drive.GetConfigurator().Apply(driveConfig);
 
-  // Steer Krakens: Coast mode, continuous wrap, and PID with derivative damping
+  // Steer Krakens: Brake mode so wheels stop cleanly when Set(0.0) is commanded inside the 0.05-turn deadband.
+  // kD = 0.0 (no derivative kick on 100Hz CANcoder frames, matching Jagwires7443/Swerve).
   auto configureSteerMotor = [&](hardware::TalonFX& motor,
                                  hardware::CANcoder& encoder,
                                  bool useRemoteCANcoder) {
     configs::TalonFXConfiguration cfg{};
-    cfg.MotorOutput.NeutralMode = signals::NeutralModeValue::Coast;
-    cfg.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = 0.01_s;
+    cfg.MotorOutput.NeutralMode = signals::NeutralModeValue::Brake;
+    cfg.OpenLoopRamps.DutyCycleOpenLoopRampPeriod = 0.02_s;
+    cfg.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = 0.02_s;
     cfg.ClosedLoopGeneral.ContinuousWrap = true;
     cfg.CurrentLimits.StatorCurrentLimit = 40.0_A;
     cfg.CurrentLimits.StatorCurrentLimitEnable = true;
@@ -67,15 +90,14 @@ void Drivetrain::ConfigureMotors() {
       cfg.Feedback.SensorToMechanismRatio = 1.0;
       cfg.Feedback.RotorToSensorRatio = 18.0;
     } else {
-      // Use internal rotor sensor geared 18:1
       cfg.Feedback.FeedbackSensorSource = signals::FeedbackSensorSourceValue::RotorSensor;
       cfg.Feedback.SensorToMechanismRatio = 18.0;
     }
 
-    // Steer PID: kP = 1.5, kD = 0.05 for critical damping (stops high-frequency chatter/vibration)
-    cfg.Slot0.kP = 1.5;
+    // Zero kD (kD = 0.0) to eliminate 100Hz RemoteCANcoder derivative chatter
+    cfg.Slot0.kP = 1.8;
     cfg.Slot0.kI = 0.0;
-    cfg.Slot0.kD = 0.05;
+    cfg.Slot0.kD = 0.0;
 
     motor.GetConfigurator().Apply(cfg);
   };
@@ -88,8 +110,18 @@ void Drivetrain::ConfigureMotors() {
   // FL steer (on "rio") is synced to CANcoder 32 (on "intakebus")
   configureSteerMotor(m_FL_Steer, CANcoderFL, false);
 
-  // Seed FL steer position from CANcoder 32 absolute turns
-  m_FL_Steer.SetPosition(units::angle::turn_t{GetFLCANcoderTurns()});
+  // Seed FL steer position and reset all 4 roboRIO ProfiledPIDControllers to current CANcoder angles
+  const double turnsFL = GetModuleTurns(CANcoderFL, m_FL_Steer, true);
+  const double turnsFR = GetModuleTurns(CANcoderFR, m_FR_Steer, false);
+  const double turnsBL = GetModuleTurns(CANcoderBL, m_BL_Steer, false);
+  const double turnsBR = GetModuleTurns(CANcoderBR, m_BR_Steer, false);
+
+  m_FL_Steer.SetPosition(units::angle::turn_t{turnsFL});
+
+  m_turningPID_FL.Reset(units::degree_t{std::remainder(turnsFL, 1.0) * 360.0});
+  m_turningPID_FR.Reset(units::degree_t{std::remainder(turnsFR, 1.0) * 360.0});
+  m_turningPID_BL.Reset(units::degree_t{std::remainder(turnsBL, 1.0) * 360.0});
+  m_turningPID_BR.Reset(units::degree_t{std::remainder(turnsBR, 1.0) * 360.0});
 }
 
 void Drivetrain::DisabledInit() {
@@ -97,31 +129,59 @@ void Drivetrain::DisabledInit() {
   m_FR_Drive.Set(0.0);
   m_BL_Drive.Set(0.0);
   m_BR_Drive.Set(0.0);
+  m_FL_Steer.Set(0.0);
+  m_FR_Steer.Set(0.0);
+  m_BL_Steer.Set(0.0);
+  m_BR_Steer.Set(0.0);
   oldspeedFL = 0; oldspeedFR = 0; oldspeedBL = 0; oldspeedBR = 0;
 }
 
 void Drivetrain::DisabledPeriodic() {
-  // Sync FL steer position to CANcoder 32 while disabled
-  m_FL_Steer.SetPosition(units::angle::turn_t{GetFLCANcoderTurns()});
+  const double turnsFL = GetModuleTurns(CANcoderFL, m_FL_Steer, true);
+  const double turnsFR = GetModuleTurns(CANcoderFR, m_FR_Steer, false);
+  const double turnsBL = GetModuleTurns(CANcoderBL, m_BL_Steer, false);
+  const double turnsBR = GetModuleTurns(CANcoderBR, m_BR_Steer, false);
 
-  frc::SmartDashboard::PutNumber("Swerve/FL_ActualTurns", m_FL_Steer.GetPosition().GetValueAsDouble());
-  frc::SmartDashboard::PutNumber("Swerve/FR_ActualTurns", m_FR_Steer.GetPosition().GetValueAsDouble());
-  frc::SmartDashboard::PutNumber("Swerve/BL_ActualTurns", m_BL_Steer.GetPosition().GetValueAsDouble());
-  frc::SmartDashboard::PutNumber("Swerve/BR_ActualTurns", m_BR_Steer.GetPosition().GetValueAsDouble());
+  // Sync FL steer position to CANcoder 32 and keep roboRIO ProfiledPIDControllers synced while disabled
+  m_FL_Steer.SetPosition(units::angle::turn_t{turnsFL});
+  m_turningPID_FL.Reset(units::degree_t{std::remainder(turnsFL, 1.0) * 360.0});
+  m_turningPID_FR.Reset(units::degree_t{std::remainder(turnsFR, 1.0) * 360.0});
+  m_turningPID_BL.Reset(units::degree_t{std::remainder(turnsBL, 1.0) * 360.0});
+  m_turningPID_BR.Reset(units::degree_t{std::remainder(turnsBR, 1.0) * 360.0});
 
-  frc::SmartDashboard::PutNumber("Swerve/FL_CANcoder", GetFLCANcoderTurns());
+  frc::SmartDashboard::PutNumber("Swerve/FL_ActualTurns", turnsFL);
+  frc::SmartDashboard::PutNumber("Swerve/FR_ActualTurns", turnsFR);
+  frc::SmartDashboard::PutNumber("Swerve/BL_ActualTurns", turnsBL);
+  frc::SmartDashboard::PutNumber("Swerve/BR_ActualTurns", turnsBR);
+
+  frc::SmartDashboard::PutNumber("Swerve/FL_CANcoder", turnsFL);
   frc::SmartDashboard::PutNumber("Swerve/FR_CANcoder", CANcoderFR.GetPosition().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Swerve/BL_CANcoder", CANcoderBL.GetPosition().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Swerve/BR_CANcoder", CANcoderBR.GetPosition().GetValueAsDouble());
 }
 
 void Drivetrain::TestZeroAzimuth() {
-  controls::PositionDutyCycle steerPos{0_tr};
-  steerPos.Slot = 0;
-  m_FL_Steer.SetControl(steerPos.WithPosition(0_tr));
-  m_FR_Steer.SetControl(steerPos.WithPosition(0_tr));
-  m_BL_Steer.SetControl(steerPos.WithPosition(0_tr));
-  m_BR_Steer.SetControl(steerPos.WithPosition(0_tr));
+  auto steerToZero = [&](hardware::TalonFX& motor,
+                         hardware::CANcoder& encoder,
+                         frc::ProfiledPIDController<units::angle::degrees>& pid,
+                         bool isFL) {
+    const double turns = GetModuleTurns(encoder, motor, isFL);
+    const units::degree_t currentDeg{std::remainder(turns, 1.0) * 360.0};
+    const double errorTurns = std::remainder(-turns, 1.0);
+    if (std::abs(errorTurns) <= DC::kSteerDeadbandTurns) {
+      pid.Reset(currentDeg);
+      motor.Set(0.0);
+    } else {
+      const double out = std::clamp(pid.Calculate(currentDeg, 0.0_deg),
+                                    -DC::kSteerPeakOutput, DC::kSteerPeakOutput);
+      motor.Set(out);
+    }
+  };
+  steerToZero(m_FL_Steer, CANcoderFL, m_turningPID_FL, true);
+  steerToZero(m_FR_Steer, CANcoderFR, m_turningPID_FR, false);
+  steerToZero(m_BL_Steer, CANcoderBL, m_turningPID_BL, false);
+  steerToZero(m_BR_Steer, CANcoderBR, m_turningPID_BR, false);
+
   m_FL_Drive.Set(0.0);
   m_FR_Drive.Set(0.0);
   m_BL_Drive.Set(0.0);
@@ -141,17 +201,36 @@ void Drivetrain::TestRotateModules(double speed) {
 }
 
 // ============================================================================
-// Main Swerve Update (WPILib SwerveDriveKinematics + SwerveModuleState Optimize)
+// Main Swerve Update (Jagwires7443/Swerve roboRIO ProfiledPIDController + WPILib Kinematics)
 // ============================================================================
 void Drivetrain::Update(double x, double y, double x2, double GyroValue,
                         double triggerL, double triggerR, bool FieldCentric) {
-  // 1. Deadzone check: When sticks are centered, zero drive outputs and HOLD steer
-  // This completely eliminates hum, vibration, and motor stalling when stationary.
+  // Read current absolute module angles directly from CANcoders (wrapped to [-180 deg, +180 deg])
+  const double turnsFL = GetModuleTurns(CANcoderFL, m_FL_Steer, true);
+  const double turnsFR = GetModuleTurns(CANcoderFR, m_FR_Steer, false);
+  const double turnsBL = GetModuleTurns(CANcoderBL, m_BL_Steer, false);
+  const double turnsBR = GetModuleTurns(CANcoderBR, m_BR_Steer, false);
+
+  const units::degree_t currentDegFL{std::remainder(turnsFL, 1.0) * 360.0};
+  const units::degree_t currentDegFR{std::remainder(turnsFR, 1.0) * 360.0};
+  const units::degree_t currentDegBL{std::remainder(turnsBL, 1.0) * 360.0};
+  const units::degree_t currentDegBR{std::remainder(turnsBR, 1.0) * 360.0};
+
+  // 1. Deadzone check: When sticks are centered, explicitly zero BOTH drive and steer motors
+  // and keep ProfiledPIDControllers synced to current module angles (Jagwires7443/Swerve).
   if (std::abs(x) < 0.08 && std::abs(y) < 0.08 && std::abs(x2) < 0.08) {
     m_FL_Drive.Set(0.0);
     m_FR_Drive.Set(0.0);
     m_BL_Drive.Set(0.0);
     m_BR_Drive.Set(0.0);
+    m_FL_Steer.Set(0.0);
+    m_FR_Steer.Set(0.0);
+    m_BL_Steer.Set(0.0);
+    m_BR_Steer.Set(0.0);
+    m_turningPID_FL.Reset(currentDegFL);
+    m_turningPID_FR.Reset(currentDegFR);
+    m_turningPID_BL.Reset(currentDegBL);
+    m_turningPID_BR.Reset(currentDegBR);
     oldspeedFL = 0; oldspeedFR = 0; oldspeedBL = 0; oldspeedBR = 0;
     return;
   }
@@ -162,9 +241,6 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   const auto kMaxAngularSpeed = units::radians_per_second_t{2.0 * M_PI * speedScale};
 
   // 3. WPILib ChassisSpeeds (NWU coordinate frame: +X forward, +Y left, +omega CCW)
-  // Left stick Y: push up (+forward) = +vx
-  // Left stick X: push right (+strafe right) = -vy (in WPILib, +Y is left)
-  // Right stick X: push right (+CW rotate) = -omega (in WPILib, CCW is positive)
   const auto vx = y * kMaxSpeed;
   const auto vy = -x * kMaxSpeed;
   const auto omega = -x2 * kMaxAngularSpeed;
@@ -187,70 +263,89 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   stateBL = states[2];
   stateBR = states[3];
 
-  // 5. Read current steer angles
-  auto getAngle = [](hardware::TalonFX& motor) {
-    return frc::Rotation2d{units::turn_t{motor.GetPosition().GetValueAsDouble()}};
-  };
-  frc::Rotation2d currentAngleFL = getAngle(m_FL_Steer);
-  frc::Rotation2d currentAngleFR = getAngle(m_FR_Steer);
-  frc::Rotation2d currentAngleBL = getAngle(m_BL_Steer);
-  frc::Rotation2d currentAngleBR = getAngle(m_BR_Steer);
+  // 5. WPILib SwerveModuleState::Optimize using direct CANcoder angles (never rotate > 90 deg)
+  const frc::Rotation2d currentAngleFL{currentDegFL};
+  const frc::Rotation2d currentAngleFR{currentDegFR};
+  const frc::Rotation2d currentAngleBL{currentDegBL};
+  const frc::Rotation2d currentAngleBR{currentDegBR};
 
-  // 6. WPILib SwerveModuleState Optimize & CosineScale (the standard WPILib algorithm)
   stateFL.Optimize(currentAngleFL);
   stateFR.Optimize(currentAngleFR);
   stateBL.Optimize(currentAngleBL);
   stateBR.Optimize(currentAngleBR);
 
+  // 6. Steer control via roboRIO ProfiledPIDController (Jagwires7443/Swerve)
+  //    with explicit Set(0.0) cutoff inside DC::kSteerDeadbandTurns (0.05 turns = 18 deg)
+  auto steerModule = [&](hardware::TalonFX& motor,
+                         frc::ProfiledPIDController<units::angle::degrees>& pid,
+                         const frc::SwerveModuleState& targetState,
+                         units::degree_t currentDeg) -> double {
+    const units::degree_t targetDeg = targetState.angle.Degrees();
+    const double errorDeg = std::remainder((targetDeg - currentDeg).value(), 360.0);
+    const double errorTurns = errorDeg / 360.0;
+
+    // Inside the 0.05-turn (18 deg) deadband: explicitly stop the steer motor (Set(0.0))
+    // so the TalonFX cannot hunt or oscillate back-and-forth around the setpoint.
+    if (std::abs(errorTurns) <= DC::kSteerDeadbandTurns) {
+      pid.Reset(currentDeg);
+      motor.Set(0.0);
+      return std::abs(errorDeg);
+    }
+
+    const double out = std::clamp(pid.Calculate(currentDeg, targetDeg),
+                                  -DC::kSteerPeakOutput, DC::kSteerPeakOutput);
+    motor.Set(out);
+    return std::abs(errorDeg);
+  };
+
+  const double errDegFL = steerModule(m_FL_Steer, m_turningPID_FL, stateFL, currentDegFL);
+  const double errDegFR = steerModule(m_FR_Steer, m_turningPID_FR, stateFR, currentDegFR);
+  const double errDegBL = steerModule(m_BL_Steer, m_turningPID_BL, stateBL, currentDegBL);
+  const double errDegBR = steerModule(m_BR_Steer, m_turningPID_BR, stateBR, currentDegBR);
+
+  // 7. Drive velocity vector alignment (std::cos(angleError)) & turning-error power reduction
+  //    (modeled after Jagwires7443/Swerve SwerveModule::SetDriveVelocity & DriveSubsystem::SetModuleStates)
   stateFL.CosineScale(currentAngleFL);
   stateFR.CosineScale(currentAngleFR);
   stateBL.CosineScale(currentAngleBL);
   stateBR.CosineScale(currentAngleBR);
 
-  // 7. Apply steer setpoints with encoder deadband (ContinuousWrap handles shortest path)
-  controls::PositionDutyCycle steerCmd{0_tr};
-  steerCmd.Slot = 0;
-
-  auto applySteerDeadband = [&](hardware::TalonFX& motor,
-                                const frc::SwerveModuleState& targetState,
-                                const frc::Rotation2d& currentAngle) {
-    const double targetTurns = targetState.angle.Degrees() / 360_deg;
-    const double currentTurns = currentAngle.Degrees() / 360_deg;
-    const double errorTurns = std::remainder(targetTurns - currentTurns, 1.0);
-    // Only command steer motor if error exceeds encoder deadband
-    if (std::abs(errorTurns) > DC::kSteerDeadbandTurns) {
-      motor.SetControl(steerCmd.WithPosition(units::turn_t{targetTurns}));
-    }
-  };
-
-  applySteerDeadband(m_FL_Steer, stateFL, currentAngleFL);
-  applySteerDeadband(m_FR_Steer, stateFR, currentAngleFR);
-  applySteerDeadband(m_BL_Steer, stateBL, currentAngleBL);
-  applySteerDeadband(m_BR_Steer, stateBR, currentAngleBR);
+  const double totalTurningError = errDegFL + errDegFR + errDegBL + errDegBR;
+  const double alignScale = (totalTurningError > 40.0) ? 0.5 : 1.0;
 
   // 8. Apply drive speeds (Left side inverted, right side positive on this chassis)
-  const double outFL = (stateFL.speed / kMaxSpeed).value();
-  const double outFR = (stateFR.speed / kMaxSpeed).value();
-  const double outBL = (stateBL.speed / kMaxSpeed).value();
-  const double outBR = (stateBR.speed / kMaxSpeed).value();
+  const double outFL = (stateFL.speed / kMaxSpeed).value() * alignScale;
+  const double outFR = (stateFR.speed / kMaxSpeed).value() * alignScale;
+  const double outBL = (stateBL.speed / kMaxSpeed).value() * alignScale;
+  const double outBR = (stateBR.speed / kMaxSpeed).value() * alignScale;
 
   m_FL_Drive.Set(std::clamp(-outFL, -1.0, 1.0));
   m_FR_Drive.Set(std::clamp(outFR, -1.0, 1.0));
   m_BL_Drive.Set(std::clamp(-outBL, -1.0, 1.0));
   m_BR_Drive.Set(std::clamp(outBR, -1.0, 1.0));
 
+  // Update internal state variables for simulation & telemetry
+  angleFL = stateFL.angle.Radians().value();
+  angleFR = stateFR.angle.Radians().value();
+  angleBL = stateBL.angle.Radians().value();
+  angleBR = stateBR.angle.Radians().value();
+  oldspeedFL = outFL * 2.0;
+  oldspeedFR = outFR * 2.0;
+  oldspeedBL = outBL * 2.0;
+  oldspeedBR = outBR * 2.0;
+
   // 9. Odometry update
-  auto getModPos = [](hardware::TalonFX& steer, hardware::TalonFX& drive) {
+  auto getModPos = [&](double moduleTurns, hardware::TalonFX& drive) {
     const double wheelRotations = drive.GetPosition().GetValueAsDouble() / 6.0375;
     const units::meter_t dist{wheelRotations * (M_PI * 0.0889)};
-    return frc::SwerveModulePosition{dist, frc::Rotation2d{units::turn_t{steer.GetPosition().GetValueAsDouble()}}};
+    return frc::SwerveModulePosition{dist, frc::Rotation2d{units::turn_t{moduleTurns}}};
   };
 
   m_odometry.Update(frc::Rotation2d{units::degree_t{-GyroValue}},
-                    {getModPos(m_FL_Steer, m_FL_Drive),
-                     getModPos(m_FR_Steer, m_FR_Drive),
-                     getModPos(m_BL_Steer, m_BL_Drive),
-                     getModPos(m_BR_Steer, m_BR_Drive)});
+                    {getModPos(turnsFL, m_FL_Drive),
+                     getModPos(turnsFR, m_FR_Drive),
+                     getModPos(turnsBL, m_BL_Drive),
+                     getModPos(turnsBR, m_BR_Drive)});
 
   positionFWDField = m_odometry.GetPose().X();
   positionSTRField = -m_odometry.GetPose().Y();
