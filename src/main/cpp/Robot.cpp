@@ -22,9 +22,9 @@ Robot::Robot() {
   m_chooser.AddOption(kAutoNameCustom, kAutoNameCustom);
   frc::SmartDashboard::PutData("Auto Modes", &m_chooser);
 
-  // Drive mode chooser - defaults to FieldCentric (ChimiSwerve Section 2.1a)
-  m_driveModeChooser.SetDefaultOption("FieldCentric", "FieldCentric");
-  m_driveModeChooser.AddOption("RobotCentric", "RobotCentric");
+  // Drive mode chooser - defaults to RobotCentric
+  m_driveModeChooser.SetDefaultOption("RobotCentric", "RobotCentric");
+  m_driveModeChooser.AddOption("FieldCentric", "FieldCentric");
   frc::SmartDashboard::PutData("Drive Mode", &m_driveModeChooser);
 
   // Controller type chooser - AutoDetect handles PS5 both natively (DirectInput) and via DS4Windows (XInput)
@@ -114,8 +114,8 @@ void Robot::TeleopPeriodic() {
         rawx2);
   }
 
-  // ChimiSwerve Section 3.7 (Page 40): Automatic fallback to RobotCentric if gyro faults
-  bool wantFieldCentric = (m_driveModeChooser.GetSelected() != "RobotCentric");
+  // Drive mode: default is RobotCentric; only FieldCentric when explicitly selected and gyro connected
+  bool wantFieldCentric = (m_driveModeChooser.GetSelected() == "FieldCentric");
   FieldCentric = wantFieldCentric && m_pigeon.IsConnected();
 
   // Telemetry for verifying driver inputs live on SmartDashboard

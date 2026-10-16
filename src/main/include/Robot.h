@@ -80,7 +80,7 @@ class Robot : public frc::TimedRobot {
   double x2 = 0.0;
   double triggerL = 0.0;
   double triggerR = 0.0;
-  bool FieldCentric = true;
+  bool FieldCentric = false;
 
   frc::SendableChooser<std::string> m_driveModeChooser;
 
