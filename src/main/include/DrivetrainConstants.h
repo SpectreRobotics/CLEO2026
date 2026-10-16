@@ -39,6 +39,11 @@ namespace DrivetrainConstants {
   inline constexpr int kBRDriveId = 10, kBRSteerId = 11, kBREncoderId = 12;
   inline constexpr int kPigeonId = 2;
 
+  // ---------- REV Servo Hub (CAN ID 63 on "rio" bus) ----------
+  inline constexpr int kServoHubId = 63;
+  inline constexpr int kServoChannel2 = 2;
+  inline constexpr int kServoChannel3 = 3;
+
   // ---------- Mechanism Motor CAN IDs (Commented out - Swerve only) ----------
   // inline constexpr int kIndexerMotorId = 50;
   // inline constexpr int kIntakeMotorId = 54;
