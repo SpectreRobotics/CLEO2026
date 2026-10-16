@@ -83,11 +83,11 @@ TEST(ChimiSwerveMathTest, OptimizeAzimuthShortestPathAndMultiTurn) {
   EXPECT_NEAR(targetTurns1, 0.0, 1e-5);
   EXPECT_NEAR(speed1, 1.0, 1e-5);
 
-  // Case 2: Target is 30° (+pi/6 rad) -> +1/12 turns
+  // Case 2: Target is 30° (+pi/6 rad) -> +1/12 turns, full drive speed preserved
   double speed2 = 1.0;
   double targetTurns2 = Drivetrain::ChimiOptimizeAzimuth(M_PI / 6.0, 0.0, speed2);
   EXPECT_NEAR(targetTurns2, 1.0 / 12.0, 1e-4);
-  EXPECT_NEAR(speed2, std::cos(M_PI / 6.0), 1e-4); // Cosine scaling at 30° (~0.866)
+  EXPECT_NEAR(speed2, 1.0, 1e-4);
 
   // Case 3: Target is 170° away (>90°). Wheel should reverse and flip setpoint by 180°.
   double speed3 = 1.0;
@@ -95,13 +95,19 @@ TEST(ChimiSwerveMathTest, OptimizeAzimuthShortestPathAndMultiTurn) {
   double targetTurns3 = Drivetrain::ChimiOptimizeAzimuth(targetRad3, 0.0, speed3);
   // Target was +0.4722 turns -> flipped by 0.5 turns gives -0.0278 turns (-10°)
   EXPECT_NEAR(targetTurns3, -10.0 / 360.0, 1e-4);
-  EXPECT_LT(speed3, 0.0); // Negated drive speed
+  EXPECT_NEAR(speed3, -1.0, 1e-4); // Negated drive speed
 
   // Case 4: Multi-turn continuity (wheel has rotated to +3.0 turns, target is 0 rad)
   double speed4 = 1.0;
   double targetTurns4 = Drivetrain::ChimiOptimizeAzimuth(0.0, 3.0, speed4);
   EXPECT_NEAR(targetTurns4, 3.0, 1e-5); // Stays at 3.0 turns instead of unwinding to 0.0
   EXPECT_NEAR(speed4, 1.0, 1e-5);
+
+  // Case 5: Static CANcoder noise buffer (fluctuation of ±0.001 turns < kSteerDeadbandTurns)
+  double speed5 = 1.0;
+  double noisyTurns = 0.001; // 0.1% turn static CANcoder fluctuation
+  double targetTurns5 = Drivetrain::ChimiOptimizeAzimuth(0.0, noisyTurns, speed5);
+  EXPECT_NEAR(targetTurns5, noisyTurns, 1e-6); // Zero steer movement commanded
 }
 
 TEST(ChimiSwerveMathTest, MinimizeRotationRadianWrapper) {

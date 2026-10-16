@@ -72,13 +72,14 @@ namespace DrivetrainConstants {
   inline constexpr double kFLMagnetOffset = 0.599121;  ///< Swerve 3 (CANcoder 32, on "intake" bus)
   inline constexpr double kBLMagnetOffset = 0.329102;  ///< Swerve 4 (CANcoder 42)
 
-  // ---------- Steering (TalonFX Slot 0 PositionDutyCycle + RemoteCANcoder / Cross-Bus P) ----------
+  // ---------- Steering (TalonFX Slot 0 PositionDutyCycle + CANcoder Deadband Buffer) ----------
   inline constexpr double ModuleP = 2.0;
   inline constexpr double ModuleI = 0.0;
   inline constexpr double ModuleD = 0.0;
   inline constexpr double kSteerPeakOutput = 1.0;
   inline constexpr double SteeringRampRateSeconds = 0.01;
   inline constexpr double kSteerCurrentLimit = 40.0;      ///< A (ChimiSwerve Sec 3.6 brownout protection)
+  inline constexpr double kSteerDeadbandTurns = 0.005;    ///< ~1.8 deg buffer to ignore static CANcoder noise (±0.001 turns)
   inline constexpr double sensorToMechanismRatio = 1.0;   ///< CANcoder turns per wheel turn
   inline constexpr double rotorToSensorRatio = 18.0;      ///< steer motor turns per CANcoder turn (18:1)
 

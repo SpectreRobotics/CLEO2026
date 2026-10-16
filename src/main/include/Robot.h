@@ -7,6 +7,7 @@
 #include <string>
 #include <frc/TimedRobot.h>
 #include <frc/PS5Controller.h>
+#include <frc/XboxController.h>
 #include <frc/Timer.h>
 #include <frc/DriverStation.h>
 #include <frc/smartdashboard/SmartDashboard.h>
@@ -35,7 +36,8 @@ class Robot : public frc::TimedRobot {
   void SimulationInit() override;
   void SimulationPeriodic() override;
 
-  // ========== Driver Controller Helpers (PS5 DualSense) ==========
+  // ========== Driver Controller Helpers (PS5 DualSense & XInput Auto-Detect) ==========
+  bool IsPS5() const;
   double GetDriverLeftX() const;
   double GetDriverLeftY() const;
   double GetDriverRightX() const;
@@ -53,9 +55,12 @@ class Robot : public frc::TimedRobot {
   const std::string kAutoNameCustom = "My Auto";
   std::string m_autoSelected;
 
-  // ========== Driver Controllers (PS5 DualSense - Port 0 with Port 1 fallback) ==========
+  // ========== Driver Controllers (PS5 DualSense & XInput - Port 0/1 with Auto-Detect) ==========
   frc::PS5Controller m_ps5Controller0{0};
   frc::PS5Controller m_ps5Controller1{1};
+  frc::XboxController m_xboxController0{0};
+  frc::XboxController m_xboxController1{1};
+  frc::SendableChooser<std::string> m_controllerChooser;
   frc::Timer m_timer;
 
   // ========== Swerve Drivetrain (ChimiSwerve White Paper) ==========

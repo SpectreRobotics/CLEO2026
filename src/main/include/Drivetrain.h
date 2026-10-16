@@ -130,6 +130,8 @@ class Drivetrain {
                       double wsFL, double wsFR, double wsBL, double wsBR,
                       double GyroValue);
   void HoldSteer();
+  void StopSteer();
+  void SyncFLSteerToCANcoder();
   void SetDrive(double fl, double fr, double bl, double br);
   void ReadSteerTurns();
   void PublishTelemetry();
