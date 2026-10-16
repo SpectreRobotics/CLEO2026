@@ -86,7 +86,7 @@ class Robot : public frc::TimedRobot {
 
   frc::SendableChooser<std::string> m_driveModeChooser;
 
-  // ========== REV Servo Hub (CAN ID 63 on "rio" bus) ==========
+  // ========== REV Servo Hub (CAN ID 62 on "rio" bus) ==========
   // Two servos defined on channels 2 and 3
   rev::servohub::ServoHub m_servoHub{DrivetrainConstants::kServoHubId};
   rev::servohub::ServoChannel& m_servoChannel2 = m_servoHub.GetServoChannel(rev::servohub::ServoChannel::ChannelId::kChannelId2);

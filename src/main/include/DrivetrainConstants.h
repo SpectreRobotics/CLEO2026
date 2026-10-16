@@ -39,8 +39,8 @@ namespace DrivetrainConstants {
   inline constexpr int kBRDriveId = 10, kBRSteerId = 11, kBREncoderId = 12;
   inline constexpr int kPigeonId = 2;
 
-  // ---------- REV Servo Hub (CAN ID 63 on "rio" bus) ----------
-  inline constexpr int kServoHubId = 63;
+  // ---------- REV Servo Hub (CAN ID 62 on "rio" bus) ----------
+  inline constexpr int kServoHubId = 62;
   inline constexpr int kServoChannel2 = 2;
   inline constexpr int kServoChannel3 = 3;
 
