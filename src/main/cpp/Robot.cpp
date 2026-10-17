@@ -78,8 +78,8 @@ void Robot::RobotPeriodic() {
 
   // Diagnostics panel
   frc::SmartDashboard::PutString("Diagnostics/Drive_Mode", FieldCentric ? "FieldCentric" : "RobotCentric");
-  frc::SmartDashboard::PutString("Diagnostics/Active_Modules", "FR (20), BL (40), BR (10)");
-  frc::SmartDashboard::PutString("Diagnostics/FL_Status", "Swerve 3 Disabled (Coast)");
+  frc::SmartDashboard::PutString("Diagnostics/Active_Modules", "FL (30), FR (20), BL (40), BR (10)");
+  frc::SmartDashboard::PutString("Diagnostics/FL_Status", "Active (Swerve 3 Connected)");
 }
 
 void Robot::AutonomousInit() {
@@ -125,8 +125,34 @@ void Robot::TeleopPeriodic() {
   } else {
     const double scaledMag = std::min(
         1.0, (mag - DrivetrainConstants::xdeadz) / (1.0 - DrivetrainConstants::xdeadz));
-    x = (rawSTR / mag) * scaledMag;
-    y = (rawFWD / mag) * scaledMag;
+    double normSTR = rawSTR / mag;
+    double normFWD = rawFWD / mag;
+
+    // 12-degree cardinal direction snap: when pointing straight forward (within ±12 deg),
+    // lock pure forward (STR = 0) so swerve modules never waver or oscillate
+    const double angleRad = std::atan2(normSTR, normFWD);
+    constexpr double kPi = 3.14159265358979323846;
+    constexpr double kCardinalSnapRad = 12.0 * kPi / 180.0;
+    if (std::abs(angleRad) < kCardinalSnapRad) {
+      // Pure forward (within ±12 deg)
+      normSTR = 0.0;
+      normFWD = 1.0;
+    } else if (std::abs(std::abs(angleRad) - kPi) < kCardinalSnapRad) {
+      // Pure backward (within ±12 deg)
+      normSTR = 0.0;
+      normFWD = -1.0;
+    } else if (std::abs(angleRad - kPi / 2.0) < kCardinalSnapRad) {
+      // Pure right strafe (within ±12 deg)
+      normSTR = 1.0;
+      normFWD = 0.0;
+    } else if (std::abs(angleRad + kPi / 2.0) < kCardinalSnapRad) {
+      // Pure left strafe (within ±12 deg)
+      normSTR = -1.0;
+      normFWD = 0.0;
+    }
+
+    x = normSTR * scaledMag;
+    y = normFWD * scaledMag;
   }
 
   // Right stick X: push right = +X on PS5 controller -> +1.0 clockwise rotation (ROT)
