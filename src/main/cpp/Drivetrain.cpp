@@ -35,30 +35,16 @@ constexpr double kSwerve4BLZeroTurns =  0.158203;
 }  // namespace
 
 double Drivetrain::GetCANcoderFLTurns() {
-  double raw = 0.0;
   auto pos = CANcoderFL.GetAbsolutePosition();
   if (pos.GetStatus().IsOK()) {
-    raw = pos.GetValueAsDouble();
-  } else {
-    static ctre::phoenix6::hardware::CANcoder CANcoderFL_rio{DC::kFLEncoderId, ctre::phoenix6::CANBus{DC::kCanBus}};
-    auto rioPos = CANcoderFL_rio.GetAbsolutePosition();
-    if (rioPos.GetStatus().IsOK()) {
-      raw = rioPos.GetValueAsDouble();
-    } else {
-      raw = pos.GetValueAsDouble();
-    }
+    return pos.GetValueAsDouble();
   }
-
-  // Filter out the ~0.004 turn CANcoder 32 bounce so small sensor jitter never triggers oscillation
-  static bool s_initialized = false;
-  static double s_filteredTurns = 0.0;
-  if (!s_initialized) {
-    s_filteredTurns = raw;
-    s_initialized = true;
-  } else if (std::abs(std::remainder(raw - s_filteredTurns, 1.0)) > 0.0045) {
-    s_filteredTurns = raw;
+  static ctre::phoenix6::hardware::CANcoder CANcoderFL_rio{DC::kFLEncoderId, ctre::phoenix6::CANBus{DC::kCanBus}};
+  auto rioPos = CANcoderFL_rio.GetAbsolutePosition();
+  if (rioPos.GetStatus().IsOK()) {
+    return rioPos.GetValueAsDouble();
   }
-  return s_filteredTurns;
+  return pos.GetValueAsDouble();
 }
 
 bool Drivetrain::IsCANcoderFLConnected() {
@@ -91,17 +77,28 @@ void Drivetrain::ConfigureMotors() {
   Posconfig.kD = ModuleD;
 
   // Swerve 3 (FL, Steer 31 on "rio", CANcoder 32 on "intakebus"):
-  // Uses RotorSensor + Brake mode + 0.08s ramp + +-0.35 PeakDutyCycle (matching FR, BL, BR),
-  // driven at full speed via m_FL_Steer.Set(flDuty) from GetCANcoderFLTurns() (as in 3399a6d164)
-  // with ModuleP, ModuleI, and ModuleD damping so it turns fast without oscillating.
-  configFL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RotorSensor;
-  configFL.OpenLoopRamps.DutyCycleOpenLoopRampPeriod = units::time::second_t(0.08);
+  // Swerve 3 (FL, Steer 31 on "rio", CANcoder 32 moved to "rio"):
+  // Identical 1-to-1 hardware RemoteCANcoder config as FR, BL, BR:
+  configFL.Feedback.FeedbackRemoteSensorID = CANcoderFL.GetDeviceID();
+  configFL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
+  configFL.Feedback.SensorToMechanismRatio = 1.0;
+  configFL.Feedback.RotorToSensorRatio = 18;
   configFL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(0.08);
   configFL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
   configFL.MotorOutput.PeakForwardDutyCycle = 0.35;
   configFL.MotorOutput.PeakReverseDutyCycle = -0.35;
   configFL.ClosedLoopGeneral.ContinuousWrap = true;
   configFL.Slot0 = Posconfig;
+
+  // --- Commented out: Old configFL when CANcoder 32 was on "intakebus" ---
+  // configFL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RotorSensor;
+  // configFL.OpenLoopRamps.DutyCycleOpenLoopRampPeriod = units::time::second_t(0.0);
+  // configFL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(0.0);
+  // configFL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
+  // configFL.MotorOutput.PeakForwardDutyCycle = 0.45;
+  // configFL.MotorOutput.PeakReverseDutyCycle = -0.45;
+  // configFL.ClosedLoopGeneral.ContinuousWrap = true;
+  // configFL.Slot0 = Posconfig;
 
   configFR.Feedback.FeedbackRemoteSensorID = CANcoderFR.GetDeviceID();
   configFR.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
@@ -186,7 +183,8 @@ void Drivetrain::DisabledPeriodic() {
   m_BL_Steer.Set(0.0);
   m_BR_Steer.Set(0.0);
 
-  const double curFLTurns = std::remainder(GetCANcoderFLTurns() - kSwerve3FLZeroTurns, 1.0);
+  // const double curFLTurns = std::remainder(GetCANcoderFLTurns() - kSwerve3FLZeroTurns, 1.0);
+  const double curFLTurns = std::remainder(m_FL_Steer.GetPosition().GetValueAsDouble() - kSwerve3FLZeroTurns, 1.0);
   const double curFRTurns = std::remainder(m_FR_Steer.GetPosition().GetValueAsDouble() - kSwerve2FRZeroTurns, 1.0);
   const double curBLTurns = std::remainder(m_BL_Steer.GetPosition().GetValueAsDouble() - kSwerve4BLZeroTurns, 1.0);
   const double curBRTurns = std::remainder(m_BR_Steer.GetPosition().GetValueAsDouble() - kSwerve1BRZeroTurns, 1.0);
@@ -207,7 +205,7 @@ void Drivetrain::DisabledPeriodic() {
   frc::SmartDashboard::PutNumber("Swerve/BR_ZeroedTurns", curBRTurns);
 
   // Raw CANcoder absolute readings
-  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FL_RawTurns", GetCANcoderFLTurns());
+  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FL_RawTurns", CANcoderFL.GetAbsolutePosition().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Swerve/CANcoder_FR_RawTurns", CANcoderFR.GetAbsolutePosition().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Swerve/CANcoder_BL_RawTurns", CANcoderBL.GetAbsolutePosition().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Swerve/CANcoder_BR_RawTurns", CANcoderBR.GetAbsolutePosition().GetValueAsDouble());
@@ -227,19 +225,28 @@ void Drivetrain::DisabledPeriodic() {
 
 void Drivetrain::TestZeroAzimuth() {
   ctre::phoenix6::controls::PositionDutyCycle steerPos{0_tr};
-  const double curZeroedFL = std::remainder(GetCANcoderFLTurns() - kSwerve3FLZeroTurns, 1.0);
-  const double errFL = std::remainder(0.0 - curZeroedFL, 1.0);
-  if (std::abs(errFL) > DC::kSteerDeadbandTurns) {
-    const double flWheelVel = m_FL_Steer.GetVelocity().GetValueAsDouble() / 18.0;
-    const double pTerm = errFL * (static_cast<double>(ModuleP) * 2.0);
-    const double dTerm = -flWheelVel * (0.15 * static_cast<double>(ModuleD));
-    m_FL_Steer.Set(std::clamp(pTerm + dTerm, -0.35, 0.35));
-  } else {
-    m_FL_Steer.Set(0.0);
-  }
+  m_FL_Steer.SetControl(steerPos.WithPosition(units::angle::turn_t{kSwerve3FLZeroTurns}));
   m_FR_Steer.SetControl(steerPos.WithPosition(units::angle::turn_t{kSwerve2FRZeroTurns}));
   m_BL_Steer.SetControl(steerPos.WithPosition(units::angle::turn_t{kSwerve4BLZeroTurns}));
   m_BR_Steer.SetControl(steerPos.WithPosition(units::angle::turn_t{kSwerve1BRZeroTurns}));
+
+  // --- Commented out: Old TestZeroAzimuth when CANcoder 32 was on "intakebus" ---
+  // const double curZeroedFL = std::remainder(GetCANcoderFLTurns() - kSwerve3FLZeroTurns, 1.0);
+  // const double errFL = std::remainder(0.0 - curZeroedFL, 1.0);
+  // if (std::abs(errFL) > DC::kSteerDeadbandTurns) {
+  //   const double flWheelVel = m_FL_Steer.GetVelocity().GetValueAsDouble() / 18.0;
+  //   const double pTerm = errFL * (static_cast<double>(FL_P) * 2.0);
+  //   const double dTerm = -flWheelVel * (0.10 * static_cast<double>(FL_D));
+  //   double flDuty = pTerm + dTerm;
+  //   if ((errFL > 0.0 && flDuty < 0.05) || (errFL < 0.0 && flDuty > -0.05)) {
+  //     flDuty = std::copysign(0.05, errFL);
+  //   }
+  //   const double rampDownCap = std::clamp(std::abs(errFL) * 3.5, 0.08, 0.45);
+  //   m_FL_Steer.Set(std::clamp(flDuty, -rampDownCap, rampDownCap));
+  // } else {
+  //   m_FL_Steer.Set(0.0);
+  // }
+
   m_FL_Drive.Set(0.0);
   m_FR_Drive.Set(0.0);
   m_BL_Drive.Set(0.0);
@@ -286,8 +293,9 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     return;
   }
 
-  // Get zeroed wheel angles in radians for all 4 swerve modules (FL from CANcoder 32 as in 3399a6d164)
-  const double curZeroedFL = std::remainder(GetCANcoderFLTurns() - kSwerve3FLZeroTurns, 1.0);
+  // Get zeroed wheel angles in radians for all 4 swerve modules (all 4 on "rio" using RemoteCANcoder)
+  // const double curZeroedFL = std::remainder(GetCANcoderFLTurns() - kSwerve3FLZeroTurns, 1.0);
+  const double curZeroedFL = std::remainder(m_FL_Steer.GetPosition().GetValueAsDouble() - kSwerve3FLZeroTurns, 1.0);
   const double curZeroedFR = std::remainder(m_FR_Steer.GetPosition().GetValueAsDouble() - kSwerve2FRZeroTurns, 1.0);
   const double curZeroedBL = std::remainder(m_BL_Steer.GetPosition().GetValueAsDouble() - kSwerve4BLZeroTurns, 1.0);
   const double curZeroedBR = std::remainder(m_BR_Steer.GetPosition().GetValueAsDouble() - kSwerve1BRZeroTurns, 1.0);
@@ -322,10 +330,12 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   speedBL = targetSpeed;
   speedBR = targetSpeed;
 
+  ctre::phoenix6::controls::PositionDutyCycle steerm_speedFL{0_tr};
   ctre::phoenix6::controls::PositionDutyCycle steerm_speedFR{0_tr};
   ctre::phoenix6::controls::PositionDutyCycle steerm_speedBL{0_tr};
   ctre::phoenix6::controls::PositionDutyCycle steerm_speedBR{0_tr};
 
+  steerm_speedFL.Slot = 0;
   steerm_speedFR.Slot = 0;
   steerm_speedBL.Slot = 0;
   steerm_speedBR.Slot = 0;
@@ -373,7 +383,7 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   frc::SmartDashboard::PutBoolean("Swerve/All_Wheels_Straight", wheelsStraight);
 
   // Raw CANcoder absolute readings (turns)
-  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FL_RawTurns", GetCANcoderFLTurns());
+  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FL_RawTurns", CANcoderFL.GetAbsolutePosition().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Swerve/CANcoder_FR_RawTurns", CANcoderFR.GetAbsolutePosition().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Swerve/CANcoder_BL_RawTurns", CANcoderBL.GetAbsolutePosition().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Swerve/CANcoder_BR_RawTurns", CANcoderBR.GetAbsolutePosition().GetValueAsDouble());
@@ -389,18 +399,31 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   frc::SmartDashboard::PutNumber("Swerve/BL_ZeroedTurns", curZeroedBL);
   frc::SmartDashboard::PutNumber("Swerve/BR_ZeroedTurns", curZeroedBR);
 
+  // All 4 steer motors use identical 1000 Hz PositionDutyCycle with RemoteCANcoder on "rio":
   if (std::abs(errFL) > deadbandTurns) {
-    iError = std::clamp(iError + errFL * 0.02, -0.1, 0.1);
-    const double flWheelVel = m_FL_Steer.GetVelocity().GetValueAsDouble() / 18.0;
-    const double pTerm = errFL * (static_cast<double>(ModuleP) * 2.0);
-    const double iTerm = iError * static_cast<double>(ModuleI);
-    const double dTerm = -flWheelVel * (0.15 * static_cast<double>(ModuleD));
-    const double flDuty = std::clamp(pTerm + iTerm + dTerm, -0.35, 0.35);
-    m_FL_Steer.Set(flDuty);
+    m_FL_Steer.SetControl(steerm_speedFL.WithPosition(units::angle::turn_t{kSwerve3FLZeroTurns + targetTurnsOffset}));
   } else {
-    iError = 0.0;
     m_FL_Steer.Set(0.0);
   }
+
+  // --- Commented out: Old software PID for FL when CANcoder 32 was on "intakebus" ---
+  // if (std::abs(errFL) > deadbandTurns) {
+  //   iError = std::clamp(iError + errFL * 0.02, -0.1, 0.1);
+  //   const double flWheelVel = m_FL_Steer.GetVelocity().GetValueAsDouble() / 18.0;
+  //   const double pTerm = errFL * (static_cast<double>(FL_P) * 2.0);
+  //   const double iTerm = iError * static_cast<double>(FL_I);
+  //   const double dTerm = -flWheelVel * (0.10 * static_cast<double>(FL_D));
+  //   double flDuty = pTerm + iTerm + dTerm;
+  //   if ((errFL > 0.0 && flDuty < 0.05) || (errFL < 0.0 && flDuty > -0.05)) {
+  //     flDuty = std::copysign(0.05, errFL);
+  //   }
+  //   const double rampDownCap = std::clamp(std::abs(errFL) * 3.5, 0.08, 0.45);
+  //   flDuty = std::clamp(flDuty, -rampDownCap, rampDownCap);
+  //   m_FL_Steer.Set(flDuty);
+  // } else {
+  //   iError = 0.0;
+  //   m_FL_Steer.Set(0.0);
+  // }
 
   if (std::abs(errFR) > deadbandTurns) {
     m_FR_Steer.SetControl(steerm_speedFR.WithPosition(units::angle::turn_t{kSwerve2FRZeroTurns + targetTurnsOffset}));

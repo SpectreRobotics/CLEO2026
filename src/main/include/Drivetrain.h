@@ -102,8 +102,9 @@ class Drivetrain {
   ctre::phoenix6::hardware::TalonFX m_BL_Steer{41};
   ctre::phoenix6::hardware::TalonFX m_BR_Steer{11};
 
-  // CANcoders *2 (Swerve 3 CANcoder 32 is on "intakebus"; 22, 42, 12 are on "rio")
-  ctre::phoenix6::hardware::CANcoder CANcoderFL{32, ctre::phoenix6::CANBus{"intakebus"}};
+  // CANcoders *2 (All 4 on "rio"; uncomment the "intakebus" line below if CANcoder 32 is moved back)
+  // ctre::phoenix6::hardware::CANcoder CANcoderFL{32, ctre::phoenix6::CANBus{"intakebus"}};
+  ctre::phoenix6::hardware::CANcoder CANcoderFL{32, ctre::phoenix6::CANBus{"rio"}};
   ctre::phoenix6::hardware::CANcoder CANcoderFR{22, ctre::phoenix6::CANBus{"rio"}};
   ctre::phoenix6::hardware::CANcoder CANcoderBL{42, ctre::phoenix6::CANBus{"rio"}};
   ctre::phoenix6::hardware::CANcoder CANcoderBR{12, ctre::phoenix6::CANBus{"rio"}};
@@ -119,6 +120,12 @@ class Drivetrain {
   float ModuleP = 0.75f;
   float ModuleI = 0.0f;
   float ModuleD = 1.0f;
+
+  // Dedicated PID gains for Swerve 3 if using intakebus software fallback:
+  // float FL_P = 1.2f;
+  // float FL_I = 0.0f;
+  // float FL_D = 0.4f;
+
   float straightP = 0.0;
   float straightI = 0.0;
   float straightD = 0.0;
