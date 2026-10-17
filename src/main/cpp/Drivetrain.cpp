@@ -142,15 +142,33 @@ void Drivetrain::DisabledPeriodic() {
     m_BR_Steer.GetConfigurator().Apply(Posconfig);
   }
 
-  frc::SmartDashboard::PutNumber(
-      "Swerve/FR_ZeroedTurns",
-      std::remainder(m_FR_Steer.GetPosition().GetValueAsDouble() - kSwerve2FRZeroTurns, 1.0));
-  frc::SmartDashboard::PutNumber(
-      "Swerve/BL_ZeroedTurns",
-      std::remainder(m_BL_Steer.GetPosition().GetValueAsDouble() - kSwerve4BLZeroTurns, 1.0));
-  frc::SmartDashboard::PutNumber(
-      "Swerve/BR_ZeroedTurns",
-      std::remainder(m_BR_Steer.GetPosition().GetValueAsDouble() - kSwerve1BRZeroTurns, 1.0));
+  const double curFRTurns = std::remainder(m_FR_Steer.GetPosition().GetValueAsDouble() - kSwerve2FRZeroTurns, 1.0);
+  const double curBLTurns = std::remainder(m_BL_Steer.GetPosition().GetValueAsDouble() - kSwerve4BLZeroTurns, 1.0);
+  const double curBRTurns = std::remainder(m_BR_Steer.GetPosition().GetValueAsDouble() - kSwerve1BRZeroTurns, 1.0);
+
+  const double curFRDeg = curFRTurns * 360.0;
+  const double curBLDeg = curBLTurns * 360.0;
+  const double curBRDeg = curBRTurns * 360.0;
+
+  frc::SmartDashboard::PutNumber("Swerve/FR_Angle_Deg", curFRDeg);
+  frc::SmartDashboard::PutNumber("Swerve/BL_Angle_Deg", curBLDeg);
+  frc::SmartDashboard::PutNumber("Swerve/BR_Angle_Deg", curBRDeg);
+
+  frc::SmartDashboard::PutNumber("Swerve/FR_ZeroedTurns", curFRTurns);
+  frc::SmartDashboard::PutNumber("Swerve/BL_ZeroedTurns", curBLTurns);
+  frc::SmartDashboard::PutNumber("Swerve/BR_ZeroedTurns", curBRTurns);
+
+  // Raw CANcoder absolute readings
+  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FR_RawTurns", CANcoderFR.GetAbsolutePosition().GetValueAsDouble());
+  frc::SmartDashboard::PutNumber("Swerve/CANcoder_BL_RawTurns", CANcoderBL.GetAbsolutePosition().GetValueAsDouble());
+  frc::SmartDashboard::PutNumber("Swerve/CANcoder_BR_RawTurns", CANcoderBR.GetAbsolutePosition().GetValueAsDouble());
+  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FL_RawTurns", CANcoderFL.GetAbsolutePosition().GetValueAsDouble());
+
+  // Wheel straight alignment indicator (|angle| < 3 degrees)
+  bool wheelsStraight = (std::abs(curFRDeg) < 3.0) &&
+                        (std::abs(curBLDeg) < 3.0) &&
+                        (std::abs(curBRDeg) < 3.0);
+  frc::SmartDashboard::PutBoolean("Swerve/All_Wheels_Straight", wheelsStraight);
 }
 
 void Drivetrain::TestZeroAzimuth() {
@@ -276,12 +294,55 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   const double errBL = std::remainder(targetTurnsBL - curZeroedBL, 1.0);
   const double errBR = std::remainder(targetTurnsBR - curZeroedBR, 1.0);
 
+  const double curFRDeg = curZeroedFR * 360.0;
+  const double curBLDeg = curZeroedBL * 360.0;
+  const double curBRDeg = curZeroedBR * 360.0;
+
+  const double targetFRDeg = targetTurnsFR * 360.0;
+  const double targetBLDeg = targetTurnsBL * 360.0;
+  const double targetBRDeg = targetTurnsBR * 360.0;
+
+  const double errFRDeg = errFR * 360.0;
+  const double errBLDeg = errBL * 360.0;
+  const double errBRDeg = errBR * 360.0;
+
+  // Live wheel angles in degrees (0 deg = straight ahead)
+  frc::SmartDashboard::PutNumber("Swerve/FR_Angle_Deg", curFRDeg);
+  frc::SmartDashboard::PutNumber("Swerve/BL_Angle_Deg", curBLDeg);
+  frc::SmartDashboard::PutNumber("Swerve/BR_Angle_Deg", curBRDeg);
+
+  // Target angles in degrees
+  frc::SmartDashboard::PutNumber("Swerve/FR_Target_Deg", targetFRDeg);
+  frc::SmartDashboard::PutNumber("Swerve/BL_Target_Deg", targetBLDeg);
+  frc::SmartDashboard::PutNumber("Swerve/BR_Target_Deg", targetBRDeg);
+
+  // Alignment errors in degrees
+  frc::SmartDashboard::PutNumber("Swerve/FR_Error_Deg", errFRDeg);
+  frc::SmartDashboard::PutNumber("Swerve/BL_Error_Deg", errBLDeg);
+  frc::SmartDashboard::PutNumber("Swerve/BR_Error_Deg", errBRDeg);
+
+  // Wheel straight alignment indicator (|angle| < 3 degrees)
+  bool wheelsStraight = (std::abs(curFRDeg) < 3.0) &&
+                        (std::abs(curBLDeg) < 3.0) &&
+                        (std::abs(curBRDeg) < 3.0);
+  frc::SmartDashboard::PutBoolean("Swerve/All_Wheels_Straight", wheelsStraight);
+
+  // Raw CANcoder absolute readings (turns)
+  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FR_RawTurns", CANcoderFR.GetAbsolutePosition().GetValueAsDouble());
+  frc::SmartDashboard::PutNumber("Swerve/CANcoder_BL_RawTurns", CANcoderBL.GetAbsolutePosition().GetValueAsDouble());
+  frc::SmartDashboard::PutNumber("Swerve/CANcoder_BR_RawTurns", CANcoderBR.GetAbsolutePosition().GetValueAsDouble());
+  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FL_RawTurns", CANcoderFL.GetAbsolutePosition().GetValueAsDouble());
+
+  // Turns telemetry
   frc::SmartDashboard::PutNumber("Swerve/TargetTurns_FR", targetTurnsFR);
   frc::SmartDashboard::PutNumber("Swerve/TargetTurns_BL", targetTurnsBL);
   frc::SmartDashboard::PutNumber("Swerve/TargetTurns_BR", targetTurnsBR);
   frc::SmartDashboard::PutNumber("Swerve/FR_ErrorTurns", errFR);
   frc::SmartDashboard::PutNumber("Swerve/BL_ErrorTurns", errBL);
   frc::SmartDashboard::PutNumber("Swerve/BR_ErrorTurns", errBR);
+  frc::SmartDashboard::PutNumber("Swerve/FR_ZeroedTurns", curZeroedFR);
+  frc::SmartDashboard::PutNumber("Swerve/BL_ZeroedTurns", curZeroedBL);
+  frc::SmartDashboard::PutNumber("Swerve/BR_ZeroedTurns", curZeroedBR);
 
   if (std::abs(errFR) > deadbandTurns) {
     m_FR_Steer.SetControl(steerm_speedFR.WithPosition(units::angle::turn_t{kSwerve2FRZeroTurns + targetTurnsFR}));

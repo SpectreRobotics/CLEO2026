@@ -36,6 +36,8 @@ Robot::Robot() {
 
   // Button to reset gyro heading from SmartDashboard
   frc::SmartDashboard::PutBoolean("Reset Gyro", false);
+  frc::SmartDashboard::PutBoolean("Reset Field Centric Heading", false);
+  frc::SmartDashboard::PutBoolean("Reset Odometry", false);
 
   // Configure swerve drivetrain motors and zero gyro heading on boot
   m_pigeon.Reset();
@@ -46,24 +48,38 @@ void Robot::RobotPeriodic() {
   // Pigeon2 yaw is CCW-positive; ChimiSwerve convention is CLOCKWISE-positive.
   GyroValue = -std::fmod(m_pigeon.GetYaw().GetValueAsDouble(), 360.0);
 
-  // Reset gyro heading: 'Touchpad' (box), 'Square' (box), 'Create', 'Options', or SmartDashboard
-  bool dashboardReset = frc::SmartDashboard::GetBoolean("Reset Gyro", false);
-  bool resetPressed = GetDriverResetGyroPressed() || dashboardReset;
+  // Reset gyro heading: 'Touchpad' (box), 'Square' (box), 'Create', 'Options', or SmartDashboard buttons
+  bool dashResetField = frc::SmartDashboard::GetBoolean("Reset Field Centric Heading", false);
+  bool dashResetGyro = frc::SmartDashboard::GetBoolean("Reset Gyro", false);
+  bool resetPressed = GetDriverResetGyroPressed() || dashResetField || dashResetGyro;
   if (resetPressed) {
     m_pigeon.Reset();
     GyroValue = 0.0;
     m_swerve.ResetHeading(0.0);
     m_swerve.ResetOdometry();
-    if (dashboardReset) {
+    if (dashResetField) {
+      frc::SmartDashboard::PutBoolean("Reset Field Centric Heading", false);
+    }
+    if (dashResetGyro) {
       frc::SmartDashboard::PutBoolean("Reset Gyro", false);
     }
   }
 
+  // SmartDashboard button to reset odometry
+  if (frc::SmartDashboard::GetBoolean("Reset Odometry", false)) {
+    m_swerve.ResetOdometry();
+    frc::SmartDashboard::PutBoolean("Reset Odometry", false);
+  }
+
   frc::SmartDashboard::PutBoolean("Driver/ResetButtonPressed", resetPressed);
-  frc::SmartDashboard::PutNumber("Gyro Heading", GyroValue);
   frc::SmartDashboard::PutNumber("Gyro Heading (CW deg)", GyroValue);
   frc::SmartDashboard::PutBoolean("Gyro/Connected", m_pigeon.IsConnected());
   frc::SmartDashboard::PutString("Controller/ActiveType", "PS5 DualSense");
+
+  // Diagnostics panel
+  frc::SmartDashboard::PutString("Diagnostics/Drive_Mode", FieldCentric ? "FieldCentric" : "RobotCentric");
+  frc::SmartDashboard::PutString("Diagnostics/Active_Modules", "FR (20), BL (40), BR (10)");
+  frc::SmartDashboard::PutString("Diagnostics/FL_Status", "Swerve 3 Disabled (Coast)");
 }
 
 void Robot::AutonomousInit() {
