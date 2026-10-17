@@ -121,8 +121,8 @@ class Drivetrain {
 
   float ModuleP = 1.0f;
   float ModuleI = 0.0f;
-  float ModuleD = 0.4f;
-  float ModuleS = 0.04f;
+  float ModuleD = 0.0f;
+  float ModuleS = 0.0f;
   float ModuleRampSeconds = 0.0f;
   float ModulePeakOutput = 0.30f;
 
@@ -143,6 +143,7 @@ class Drivetrain {
   double speedFL = 0, speedFR = 0, speedBL = 0, speedBR = 0;
 
   double oldspeedFL = 0, oldspeedFR = 0, oldspeedBL = 0, oldspeedBR = 0;
+  bool m_steerActiveFL = false, m_steerActiveFR = false, m_steerActiveBL = false, m_steerActiveBR = false;
 
   units::time::second_t lastTime = units::time::second_t(0);
   double lastError = 0;

@@ -224,6 +224,7 @@ void Drivetrain::DisabledInit() {
   m_BL_Steer.Set(0.0);
   m_BR_Steer.Set(0.0);
   oldspeedFL = 0; oldspeedFR = 0; oldspeedBL = 0; oldspeedBR = 0;
+  m_steerActiveFL = false; m_steerActiveFR = false; m_steerActiveBL = false; m_steerActiveBR = false;
   iError = 0.0;
 
   SyncSmartDashboardPID();
@@ -345,6 +346,7 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   // When both sticks are centered, stop all drive and steer motors so they never hum or twitch
   if (x == 0.0 && y == 0.0 && x2 == 0.0) {
     oldspeedFL = 0; oldspeedFR = 0; oldspeedBL = 0; oldspeedBR = 0;
+    m_steerActiveFL = false; m_steerActiveFR = false; m_steerActiveBL = false; m_steerActiveBR = false;
     iError = 0.0;
     m_FL_Drive.Set(0.0);
     m_FR_Drive.Set(0.0);
@@ -469,8 +471,25 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   frc::SmartDashboard::PutNumber("Swerve/BL_ZeroedTurns", curZeroedBL);
   frc::SmartDashboard::PutNumber("Swerve/BR_ZeroedTurns", curZeroedBR);
 
-  // Continuous shortest-path targets (curRaw + err) so TalonFX never crosses a +-0.5 wrap discontinuity
-  if (deadbandTurns <= 0.0 || std::abs(errFL) > deadbandTurns) {
+  // Hysteresis deadband: steer until within deadbandTurns (e.g. 0.015 = 5.4 deg),
+  // then lock in Brake mode (0.0) and only re-engage if error exceeds 2x deadbandTurns (10.8 deg)
+  // so tire rubber spring-back or thumbstick jitter never causes deadband-edge wobble.
+  const double stopBand = deadbandTurns;
+  const double startBand = deadbandTurns * 2.0;
+
+  if (std::abs(errFL) > startBand) m_steerActiveFL = true;
+  else if (std::abs(errFL) <= stopBand) m_steerActiveFL = false;
+
+  if (std::abs(errFR) > startBand) m_steerActiveFR = true;
+  else if (std::abs(errFR) <= stopBand) m_steerActiveFR = false;
+
+  if (std::abs(errBL) > startBand) m_steerActiveBL = true;
+  else if (std::abs(errBL) <= stopBand) m_steerActiveBL = false;
+
+  if (std::abs(errBR) > startBand) m_steerActiveBR = true;
+  else if (std::abs(errBR) <= stopBand) m_steerActiveBR = false;
+
+  if (deadbandTurns <= 0.0 || m_steerActiveFL) {
     m_FL_Steer.SetControl(steerm_speedFL.WithPosition(units::angle::turn_t{curRawFL + errFL}));
   } else {
     m_FL_Steer.Set(0.0);
@@ -495,19 +514,19 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   //   m_FL_Steer.Set(0.0);
   // }
 
-  if (deadbandTurns <= 0.0 || std::abs(errFR) > deadbandTurns) {
+  if (deadbandTurns <= 0.0 || m_steerActiveFR) {
     m_FR_Steer.SetControl(steerm_speedFR.WithPosition(units::angle::turn_t{curRawFR + errFR}));
   } else {
     m_FR_Steer.Set(0.0);
   }
 
-  if (deadbandTurns <= 0.0 || std::abs(errBL) > deadbandTurns) {
+  if (deadbandTurns <= 0.0 || m_steerActiveBL) {
     m_BL_Steer.SetControl(steerm_speedBL.WithPosition(units::angle::turn_t{curRawBL + errBL}));
   } else {
     m_BL_Steer.Set(0.0);
   }
 
-  if (deadbandTurns <= 0.0 || std::abs(errBR) > deadbandTurns) {
+  if (deadbandTurns <= 0.0 || m_steerActiveBR) {
     m_BR_Steer.SetControl(steerm_speedBR.WithPosition(units::angle::turn_t{curRawBR + errBR}));
   } else {
     m_BR_Steer.Set(0.0);
