@@ -121,9 +121,9 @@ class Drivetrain {
 
   float ModuleP = 1.0f;
   float ModuleI = 0.0f;
-  float ModuleD = 0.3f;
+  float ModuleD = 1.5f;
   float ModuleS = 0.0f;
-  float ModuleRampSeconds = 0.0f;
+  float ModuleRampSeconds = 0.001f;
   float ModulePeakOutput = 0.10f;
 
   // Dedicated PID gains for Swerve 3 if using intakebus software fallback:
