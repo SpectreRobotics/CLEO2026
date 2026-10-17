@@ -127,9 +127,15 @@ void Robot::TeleopPeriodic() {
     y = (rawFWD / mag) * scaledMag;
   }
 
-  // Rotation disabled: only forwards/backwards (y) and side-to-side (x)
-  (void)rawx2;
-  x2 = 0.0;
+  // ChimiSwerve Section 3.5: Deadzone interpolation for rotation stick (Right X)
+  if (std::abs(rawx2) < DrivetrainConstants::x2deadz) {
+    x2 = 0.0;
+  } else {
+    x2 = std::copysign(
+        std::min(1.0, (std::abs(rawx2) - DrivetrainConstants::x2deadz) /
+                          (1.0 - DrivetrainConstants::x2deadz)),
+        rawx2);
+  }
 
   // Reverse orientation toggle from SmartDashboard (dropdown chooser or checkbox toggle)
   bool reverseFromChooser = (m_orientationChooser.GetSelected() == "Reversed");
@@ -160,7 +166,7 @@ void Robot::TeleopPeriodic() {
   frc::SmartDashboard::PutNumber("Driver/Cmd_STR", x);
   frc::SmartDashboard::PutNumber("Driver/Cmd_ROT", x2);
 
-  m_swerve.Update(x, y, 0.0, GyroValue, triggerL, triggerR, FieldCentric);
+  m_swerve.Update(x, y, x2, GyroValue, triggerL, triggerR, FieldCentric);
 
   // ========== Mechanism Controls (Commented out - Swerve only) ==========
   // // Shooting / Outtake control using right trigger (R2)

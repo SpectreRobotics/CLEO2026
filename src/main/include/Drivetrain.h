@@ -119,10 +119,11 @@ class Drivetrain {
   ctre::phoenix6::configs::TalonFXConfiguration configBL{};
   ctre::phoenix6::configs::TalonFXConfiguration configBR{};
 
-  float ModuleP = 0.75f;
+  float ModuleP = 1.0f;
   float ModuleI = 0.0f;
-  float ModuleD = 0.20f;
-  float ModuleRampSeconds = 0.03f;
+  float ModuleD = 0.4f;
+  float ModuleS = 0.04f;
+  float ModuleRampSeconds = 0.0f;
   float ModulePeakOutput = 0.30f;
 
   // Dedicated PID gains for Swerve 3 if using intakebus software fallback:
