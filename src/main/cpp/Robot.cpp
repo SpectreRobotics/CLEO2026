@@ -94,9 +94,7 @@ void Robot::AutonomousPeriodic() {
 }
 
 void Robot::TeleopInit() {
-  if (!m_swerve.AreConfigsApplied()) {
-    m_swerve.ConfigureMotors();
-  }
+  m_swerve.ConfigureMotors();
   m_swerve.ResetHeading(GyroValue);
 }
 

@@ -84,7 +84,7 @@ namespace DrivetrainConstants {
   inline constexpr double kSteerPeakOutput = 1.0;
   inline constexpr double SteeringRampRateSeconds = 0.01;
   inline constexpr double kSteerCurrentLimit = 40.0;      ///< A (ChimiSwerve Sec 3.6 brownout protection)
-  inline constexpr double kSteerDeadbandTurns = 5.0 / 360.0; ///< 5 degrees (~0.0139 turns) encoder deadband (> 0.004 CANcoder bounce)
+  inline constexpr double kSteerDeadbandTurns = 0.05;     ///< 0.05 turns (5% / 18 deg) encoder deadband to prevent motor hunting/wobble at target
   inline constexpr double sensorToMechanismRatio = 1.0;   ///< CANcoder turns per wheel turn
   inline constexpr double rotorToSensorRatio = 18.0;      ///< steer motor turns per CANcoder turn (18:1)
 
