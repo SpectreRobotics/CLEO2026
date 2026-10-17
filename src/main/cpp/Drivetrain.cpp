@@ -72,10 +72,18 @@ void Drivetrain::ConfigureMotors() {
   m_BL_Drive.GetConfigurator().Apply(driveConfig);
   m_BR_Drive.GetConfigurator().Apply(driveConfig);
 
-  // DO NOT apply configs in code to CAN 31 (m_FL_Steer); uses Phoenix Tuner X flash settings
-
-  // Steer Krakens (Swerve 2 FR, Swerve 4 BL, Swerve 1 BR):
+  // Steer Krakens (all 4 modules: Swerve 3 FL, Swerve 2 FR, Swerve 4 BL, Swerve 1 BR):
   // Brake mode + reduced PeakDutyCycle (0.35) + 0.08s ramp + yesterday's tuned PID (0.75, 0.0001, 1.0)
+  configFL.Feedback.FeedbackRemoteSensorID = CANcoderFL.GetDeviceID();
+  configFL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
+  configFL.Feedback.SensorToMechanismRatio = 1.0;
+  configFL.Feedback.RotorToSensorRatio = 18;
+  configFL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(0.08);
+  configFL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
+  configFL.MotorOutput.PeakForwardDutyCycle = 0.35;
+  configFL.MotorOutput.PeakReverseDutyCycle = -0.35;
+  configFL.ClosedLoopGeneral.ContinuousWrap = true;
+
   configFR.Feedback.FeedbackRemoteSensorID = CANcoderFR.GetDeviceID();
   configFR.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
   configFR.Feedback.SensorToMechanismRatio = 1.0;
@@ -110,6 +118,8 @@ void Drivetrain::ConfigureMotors() {
   Posconfig.kI = ModuleI;
   Posconfig.kD = ModuleD;
 
+  m_FL_Steer.GetConfigurator().Apply(configFL);
+  m_FL_Steer.GetConfigurator().Apply(Posconfig);
   m_FR_Steer.GetConfigurator().Apply(configFR);
   m_FR_Steer.GetConfigurator().Apply(Posconfig);
   m_BL_Steer.GetConfigurator().Apply(configBL);
@@ -159,6 +169,7 @@ void Drivetrain::DisabledPeriodic() {
     Posconfig.kP = ModuleP;
     Posconfig.kI = ModuleI;
     Posconfig.kD = ModuleD;
+    m_FL_Steer.GetConfigurator().Apply(Posconfig);
     m_FR_Steer.GetConfigurator().Apply(Posconfig);
     m_BL_Steer.GetConfigurator().Apply(Posconfig);
     m_BR_Steer.GetConfigurator().Apply(Posconfig);
@@ -238,6 +249,7 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     Posconfig.kP = ModuleP;
     Posconfig.kI = ModuleI;
     Posconfig.kD = ModuleD;
+    m_FL_Steer.GetConfigurator().Apply(Posconfig);
     m_FR_Steer.GetConfigurator().Apply(Posconfig);
     m_BL_Steer.GetConfigurator().Apply(Posconfig);
     m_BR_Steer.GetConfigurator().Apply(Posconfig);
