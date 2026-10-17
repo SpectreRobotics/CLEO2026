@@ -271,19 +271,19 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   frc::SmartDashboard::PutNumber("Swerve/BL_ErrorTurns", errBL);
   frc::SmartDashboard::PutNumber("Swerve/BR_ErrorTurns", errBR);
 
-  if (std::abs(errFR) > deadbandTurns) {
+  if (deadbandTurns <= 0.0 || std::abs(errFR) > deadbandTurns) {
     m_FR_Steer.SetControl(steerm_speedFR.WithPosition(units::angle::turn_t{kSwerve2FRZeroTurns + targetTurnsOffset}));
   } else {
     m_FR_Steer.Set(0.0);
   }
 
-  if (std::abs(errBL) > deadbandTurns) {
+  if (deadbandTurns <= 0.0 || std::abs(errBL) > deadbandTurns) {
     m_BL_Steer.SetControl(steerm_speedBL.WithPosition(units::angle::turn_t{kSwerve4BLZeroTurns + targetTurnsOffset}));
   } else {
     m_BL_Steer.Set(0.0);
   }
 
-  if (std::abs(errBR) > deadbandTurns) {
+  if (deadbandTurns <= 0.0 || std::abs(errBR) > deadbandTurns) {
     m_BR_Steer.SetControl(steerm_speedBR.WithPosition(units::angle::turn_t{kSwerve1BRZeroTurns + targetTurnsOffset}));
   } else {
     m_BR_Steer.Set(0.0);
