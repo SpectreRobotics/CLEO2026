@@ -471,11 +471,10 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   frc::SmartDashboard::PutNumber("Swerve/BL_ZeroedTurns", curZeroedBL);
   frc::SmartDashboard::PutNumber("Swerve/BR_ZeroedTurns", curZeroedBR);
 
-  // Hysteresis deadband: steer until within deadbandTurns (e.g. 0.015 = 5.4 deg),
-  // then lock in Brake mode (0.0) and only re-engage if error exceeds 2x deadbandTurns (10.8 deg)
-  // so tire rubber spring-back or thumbstick jitter never causes deadband-edge wobble.
+  // Negate the ~3% (0.03 turns) wobble: stop at deadbandTurns (0.03 = 3%)
+  // and only re-engage if error exceeds deadbandTurns + 0.01 (4%).
   const double stopBand = deadbandTurns;
-  const double startBand = deadbandTurns * 2.0;
+  const double startBand = deadbandTurns + 0.01;
 
   if (std::abs(errFL) > startBand) m_steerActiveFL = true;
   else if (std::abs(errFL) <= stopBand) m_steerActiveFL = false;
