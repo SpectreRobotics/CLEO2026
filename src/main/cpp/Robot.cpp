@@ -99,8 +99,14 @@ void Robot::TeleopPeriodic() {
     y = (rawFWD / mag) * scaledMag;
   }
 
-  // Rotation disabled: only forwards/backwards (y) and side-to-side (x) translation
-  x2 = 0.0;
+  // Right stick X: push right = +X on PS5 controller -> +1.0 clockwise rotation (ROT)
+  if (std::abs(rawx2) < DrivetrainConstants::x2deadz) {
+    x2 = 0.0;
+  } else {
+    x2 = std::copysign(
+        (std::abs(rawx2) - DrivetrainConstants::x2deadz) / (1.0 - DrivetrainConstants::x2deadz),
+        rawx2);
+  }
 
   // Drive mode: default is RobotCentric; only FieldCentric when explicitly selected and gyro connected
   bool wantFieldCentric = (m_driveModeChooser.GetSelected() == "FieldCentric");
@@ -119,7 +125,7 @@ void Robot::TeleopPeriodic() {
   frc::SmartDashboard::PutNumber("Driver/Cmd_STR", x);
   frc::SmartDashboard::PutNumber("Driver/Cmd_ROT", x2);
 
-  m_swerve.Update(x, y, 0.0, GyroValue, triggerL, triggerR, FieldCentric);
+  m_swerve.Update(x, y, x2, GyroValue, triggerL, triggerR, FieldCentric);
 
   // ========== Mechanism Controls (Commented out - Swerve only) ==========
   // // Shooting / Outtake control using right trigger (R2)

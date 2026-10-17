@@ -202,12 +202,10 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     m_BR_Steer.GetConfigurator().Apply(Posconfig);
   }
 
-  // Rotation disabled: only forwards/backwards (y) and side-to-side (x)
-  (void)x2;
-  ROT = 0.0;
+  ROT = x2;
 
   // When stick is centered, stop all drive and steer motors so they never hum or twitch
-  if (x == 0.0 && y == 0.0) {
+  if (x == 0.0 && y == 0.0 && x2 == 0.0) {
     oldspeedFL = 0; oldspeedFR = 0; oldspeedBL = 0; oldspeedBR = 0;
     m_FL_Drive.Set(0.0);
     m_FR_Drive.Set(0.0);
@@ -238,21 +236,33 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     FWD = temp;
   }
 
-  // Pure translation: all 3 active wheels (FR, BL, BR) turn to the EXACT SAME angle (no 180-deg flip)
-  //   Push straight forward (STR=0, FWD=+1) -> targetAngle = 0 rad (all wheels straight)
-  //   Push left/right       (STR=+-1, FWD=0) -> targetAngle = +-pi/2 rad (all wheels 90 deg left/right)
-  const double targetAngleRad = std::atan2(STR, FWD);
-  const double targetTurnsOffset = targetAngleRad / (2.0 * M_PI);
-  const double targetSpeed = std::clamp(std::hypot(STR, FWD), 0.0, 1.0);
+  // Ether / ChimiSwerve inverse kinematics combining translation (STR, FWD) and rotation (ROT)
+  const double A = STR - ROT * (DC::L / DC::R);
+  const double B = STR + ROT * (DC::L / DC::R);
+  const double C = FWD - ROT * (DC::W / DC::R);
+  const double D = FWD + ROT * (DC::W / DC::R);
 
-  angleFR = targetAngleRad;
-  angleBL = targetAngleRad;
-  angleBR = targetAngleRad;
+  speedFL = 0.0;  // Swerve 3 (FL) disabled in coast mode
+  speedFR = std::hypot(B, C);
+  speedBL = std::hypot(A, D);
+  speedBR = std::hypot(A, C);
 
-  speedFL = 0.0;
-  speedFR = targetSpeed;
-  speedBL = targetSpeed;
-  speedBR = targetSpeed;
+  // Normalize speeds to 1.0 maximum if translation + rotation exceeds 1.0
+  const double maxSpeed = std::max({speedFR, speedBL, speedBR});
+  if (maxSpeed > 1.0) {
+    speedFR /= maxSpeed;
+    speedBL /= maxSpeed;
+    speedBR /= maxSpeed;
+  }
+
+  // Calculate target steering angles (keeping previous angle if module speed is near zero)
+  if (speedFR > 1e-4) angleFR = std::atan2(B, C);
+  if (speedBL > 1e-4) angleBL = std::atan2(A, D);
+  if (speedBR > 1e-4) angleBR = std::atan2(A, C);
+
+  const double targetTurnsFR = angleFR / (2.0 * M_PI);
+  const double targetTurnsBL = angleBL / (2.0 * M_PI);
+  const double targetTurnsBR = angleBR / (2.0 * M_PI);
 
   ctre::phoenix6::controls::PositionDutyCycle steerm_speedFR{0_tr};
   ctre::phoenix6::controls::PositionDutyCycle steerm_speedBL{0_tr};
@@ -262,29 +272,31 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   steerm_speedBL.Slot = 0;
   steerm_speedBR.Slot = 0;
 
-  const double errFR = std::remainder(targetTurnsOffset - curZeroedFR, 1.0);
-  const double errBL = std::remainder(targetTurnsOffset - curZeroedBL, 1.0);
-  const double errBR = std::remainder(targetTurnsOffset - curZeroedBR, 1.0);
+  const double errFR = std::remainder(targetTurnsFR - curZeroedFR, 1.0);
+  const double errBL = std::remainder(targetTurnsBL - curZeroedBL, 1.0);
+  const double errBR = std::remainder(targetTurnsBR - curZeroedBR, 1.0);
 
-  frc::SmartDashboard::PutNumber("Swerve/TargetTurns", targetTurnsOffset);
+  frc::SmartDashboard::PutNumber("Swerve/TargetTurns_FR", targetTurnsFR);
+  frc::SmartDashboard::PutNumber("Swerve/TargetTurns_BL", targetTurnsBL);
+  frc::SmartDashboard::PutNumber("Swerve/TargetTurns_BR", targetTurnsBR);
   frc::SmartDashboard::PutNumber("Swerve/FR_ErrorTurns", errFR);
   frc::SmartDashboard::PutNumber("Swerve/BL_ErrorTurns", errBL);
   frc::SmartDashboard::PutNumber("Swerve/BR_ErrorTurns", errBR);
 
   if (std::abs(errFR) > deadbandTurns) {
-    m_FR_Steer.SetControl(steerm_speedFR.WithPosition(units::angle::turn_t{kSwerve2FRZeroTurns + targetTurnsOffset}));
+    m_FR_Steer.SetControl(steerm_speedFR.WithPosition(units::angle::turn_t{kSwerve2FRZeroTurns + targetTurnsFR}));
   } else {
     m_FR_Steer.Set(0.0);
   }
 
   if (std::abs(errBL) > deadbandTurns) {
-    m_BL_Steer.SetControl(steerm_speedBL.WithPosition(units::angle::turn_t{kSwerve4BLZeroTurns + targetTurnsOffset}));
+    m_BL_Steer.SetControl(steerm_speedBL.WithPosition(units::angle::turn_t{kSwerve4BLZeroTurns + targetTurnsBL}));
   } else {
     m_BL_Steer.Set(0.0);
   }
 
   if (std::abs(errBR) > deadbandTurns) {
-    m_BR_Steer.SetControl(steerm_speedBR.WithPosition(units::angle::turn_t{kSwerve1BRZeroTurns + targetTurnsOffset}));
+    m_BR_Steer.SetControl(steerm_speedBR.WithPosition(units::angle::turn_t{kSwerve1BRZeroTurns + targetTurnsBR}));
   } else {
     m_BR_Steer.Set(0.0);
   }
