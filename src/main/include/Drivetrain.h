@@ -114,9 +114,9 @@ class Drivetrain {
   ctre::phoenix6::configs::TalonFXConfiguration configBL{};
   ctre::phoenix6::configs::TalonFXConfiguration configBR{};
 
-  float ModuleP = 0.65f;
-  float ModuleI = 0.0f;
-  float ModuleD = 0.0f;
+  float ModuleP = 0.75f;
+  float ModuleI = 0.0001f;
+  float ModuleD = 1.0f;
   float straightP = 0.0;
   float straightI = 0.0;
   float straightD = 0.0;
