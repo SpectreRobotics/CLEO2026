@@ -110,6 +110,8 @@ class Drivetrain {
   ctre::phoenix6::hardware::CANcoder CANcoderBR{12, ctre::phoenix6::CANBus{"rio"}};
 
  private:
+  void SyncSmartDashboardPID();
+
   ctre::phoenix6::configs::Slot0Configs Posconfig{};
   ctre::phoenix6::configs::TalonFXConfiguration driveConfig{};
   ctre::phoenix6::configs::TalonFXConfiguration configFL{};
@@ -119,7 +121,9 @@ class Drivetrain {
 
   float ModuleP = 0.75f;
   float ModuleI = 0.0f;
-  float ModuleD = 1.0f;
+  float ModuleD = 0.20f;
+  float ModuleRampSeconds = 0.03f;
+  float ModulePeakOutput = 0.30f;
 
   // Dedicated PID gains for Swerve 3 if using intakebus software fallback:
   // float FL_P = 1.2f;

@@ -83,10 +83,10 @@ void Drivetrain::ConfigureMotors() {
   configFL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
   configFL.Feedback.SensorToMechanismRatio = 1.0;
   configFL.Feedback.RotorToSensorRatio = 18;
-  configFL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(0.08);
+  configFL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
   configFL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  configFL.MotorOutput.PeakForwardDutyCycle = 0.35;
-  configFL.MotorOutput.PeakReverseDutyCycle = -0.35;
+  configFL.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
+  configFL.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
   configFL.ClosedLoopGeneral.ContinuousWrap = true;
   configFL.Slot0 = Posconfig;
 
@@ -104,10 +104,10 @@ void Drivetrain::ConfigureMotors() {
   configFR.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
   configFR.Feedback.SensorToMechanismRatio = 1.0;
   configFR.Feedback.RotorToSensorRatio = 18;
-  configFR.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(0.08);
+  configFR.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
   configFR.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  configFR.MotorOutput.PeakForwardDutyCycle = 0.35;
-  configFR.MotorOutput.PeakReverseDutyCycle = -0.35;
+  configFR.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
+  configFR.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
   configFR.ClosedLoopGeneral.ContinuousWrap = true;
   configFR.Slot0 = Posconfig;
 
@@ -115,10 +115,10 @@ void Drivetrain::ConfigureMotors() {
   configBL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
   configBL.Feedback.SensorToMechanismRatio = 1.0;
   configBL.Feedback.RotorToSensorRatio = 18;
-  configBL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(0.08);
+  configBL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
   configBL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  configBL.MotorOutput.PeakForwardDutyCycle = 0.35;
-  configBL.MotorOutput.PeakReverseDutyCycle = -0.35;
+  configBL.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
+  configBL.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
   configBL.ClosedLoopGeneral.ContinuousWrap = true;
   configBL.Slot0 = Posconfig;
 
@@ -126,10 +126,10 @@ void Drivetrain::ConfigureMotors() {
   configBR.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
   configBR.Feedback.SensorToMechanismRatio = 1.0;
   configBR.Feedback.RotorToSensorRatio = 18;
-  configBR.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(0.08);
+  configBR.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
   configBR.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  configBR.MotorOutput.PeakForwardDutyCycle = 0.35;
-  configBR.MotorOutput.PeakReverseDutyCycle = -0.35;
+  configBR.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
+  configBR.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
   configBR.ClosedLoopGeneral.ContinuousWrap = true;
   configBR.Slot0 = Posconfig;
 
@@ -144,11 +144,63 @@ void Drivetrain::ConfigureMotors() {
 
   frc::SmartDashboard::PutString("Diagnostics/FL_Steer_ConfigStatus", flStatus.GetName());
 
-  // Publish active PID & deadband fields from Drivetrain.h / DrivetrainConstants.h
-  frc::SmartDashboard::PutNumber("Swerve/Steer_kP", ModuleP);
-  frc::SmartDashboard::PutNumber("Swerve/Steer_kI", ModuleI);
-  frc::SmartDashboard::PutNumber("Swerve/Steer_kD", ModuleD);
-  frc::SmartDashboard::PutNumber("Swerve/Steer_DeadbandTurns", DC::kSteerDeadbandTurns);
+  // Publish editable PID, ramp, peak output & deadband fields on SmartDashboard
+  frc::SmartDashboard::SetDefaultNumber("Swerve/Steer_kP", ModuleP);
+  frc::SmartDashboard::SetDefaultNumber("Swerve/Steer_kI", ModuleI);
+  frc::SmartDashboard::SetDefaultNumber("Swerve/Steer_kD", ModuleD);
+  frc::SmartDashboard::SetDefaultNumber("Swerve/Steer_RampSeconds", ModuleRampSeconds);
+  frc::SmartDashboard::SetDefaultNumber("Swerve/Steer_PeakOutput", ModulePeakOutput);
+  frc::SmartDashboard::SetDefaultNumber("Swerve/Steer_DeadbandTurns", DC::kSteerDeadbandTurns);
+  SyncSmartDashboardPID();
+}
+
+void Drivetrain::SyncSmartDashboardPID() {
+  const float dashP = static_cast<float>(frc::SmartDashboard::GetNumber("Swerve/Steer_kP", ModuleP));
+  const float dashI = static_cast<float>(frc::SmartDashboard::GetNumber("Swerve/Steer_kI", ModuleI));
+  const float dashD = static_cast<float>(frc::SmartDashboard::GetNumber("Swerve/Steer_kD", ModuleD));
+  const float dashRamp = static_cast<float>(std::clamp(frc::SmartDashboard::GetNumber("Swerve/Steer_RampSeconds", ModuleRampSeconds), 0.0, 0.5));
+  const float dashPeak = static_cast<float>(std::clamp(frc::SmartDashboard::GetNumber("Swerve/Steer_PeakOutput", ModulePeakOutput), 0.05, 1.0));
+
+  if (std::abs(dashP - ModuleP) > 1e-4f ||
+      std::abs(dashI - ModuleI) > 1e-4f ||
+      std::abs(dashD - ModuleD) > 1e-4f) {
+    ModuleP = dashP;
+    ModuleI = dashI;
+    ModuleD = dashD;
+    Posconfig.kP = ModuleP;
+    Posconfig.kI = ModuleI;
+    Posconfig.kD = ModuleD;
+    m_FL_Steer.GetConfigurator().Apply(Posconfig);
+    m_FR_Steer.GetConfigurator().Apply(Posconfig);
+    m_BL_Steer.GetConfigurator().Apply(Posconfig);
+    m_BR_Steer.GetConfigurator().Apply(Posconfig);
+  }
+
+  if (std::abs(dashRamp - ModuleRampSeconds) > 1e-4f ||
+      std::abs(dashPeak - ModulePeakOutput) > 1e-4f) {
+    ModuleRampSeconds = dashRamp;
+    ModulePeakOutput = dashPeak;
+    configFL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
+    configFR.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
+    configBL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
+    configBR.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
+    configFL.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
+    configFL.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
+    configFR.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
+    configFR.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
+    configBL.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
+    configBL.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
+    configBR.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
+    configBR.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
+    m_FL_Steer.GetConfigurator().Apply(configFL.ClosedLoopRamps);
+    m_FR_Steer.GetConfigurator().Apply(configFR.ClosedLoopRamps);
+    m_BL_Steer.GetConfigurator().Apply(configBL.ClosedLoopRamps);
+    m_BR_Steer.GetConfigurator().Apply(configBR.ClosedLoopRamps);
+    m_FL_Steer.GetConfigurator().Apply(configFL.MotorOutput);
+    m_FR_Steer.GetConfigurator().Apply(configFR.MotorOutput);
+    m_BL_Steer.GetConfigurator().Apply(configBL.MotorOutput);
+    m_BR_Steer.GetConfigurator().Apply(configBR.MotorOutput);
+  }
 }
 
 void Drivetrain::DisabledInit() {
@@ -163,14 +215,7 @@ void Drivetrain::DisabledInit() {
   oldspeedFL = 0; oldspeedFR = 0; oldspeedBL = 0; oldspeedBR = 0;
   iError = 0.0;
 
-  // Ensure Posconfig from Drivetrain.h is applied to all 4 steer motors
-  Posconfig.kP = ModuleP;
-  Posconfig.kI = ModuleI;
-  Posconfig.kD = ModuleD;
-  m_FL_Steer.GetConfigurator().Apply(Posconfig);
-  m_FR_Steer.GetConfigurator().Apply(Posconfig);
-  m_BL_Steer.GetConfigurator().Apply(Posconfig);
-  m_BR_Steer.GetConfigurator().Apply(Posconfig);
+  SyncSmartDashboardPID();
 }
 
 void Drivetrain::DisabledPeriodic() {
@@ -182,6 +227,8 @@ void Drivetrain::DisabledPeriodic() {
   m_FR_Steer.Set(0.0);
   m_BL_Steer.Set(0.0);
   m_BR_Steer.Set(0.0);
+
+  SyncSmartDashboardPID();
 
   // const double curFLTurns = std::remainder(GetCANcoderFLTurns() - kSwerve3FLZeroTurns, 1.0);
   const double curFLTurns = std::remainder(m_FL_Steer.GetPosition().GetValueAsDouble() - kSwerve3FLZeroTurns, 1.0);
@@ -224,6 +271,7 @@ void Drivetrain::DisabledPeriodic() {
 }
 
 void Drivetrain::TestZeroAzimuth() {
+  SyncSmartDashboardPID();
   ctre::phoenix6::controls::PositionDutyCycle steerPos{0_tr};
   m_FL_Steer.SetControl(steerPos.WithPosition(units::angle::turn_t{kSwerve3FLZeroTurns}));
   m_FR_Steer.SetControl(steerPos.WithPosition(units::angle::turn_t{kSwerve2FRZeroTurns}));
@@ -267,14 +315,15 @@ void Drivetrain::TestRotateModules(double speed) {
 
 void Drivetrain::Update(double x, double y, double x2, double GyroValue,
                         double triggerL, double triggerR, bool FieldCentric) {
-  const double deadbandTurns = DC::kSteerDeadbandTurns;
+  SyncSmartDashboardPID();
+  const double deadbandTurns = frc::SmartDashboard::GetNumber("Swerve/Steer_DeadbandTurns", DC::kSteerDeadbandTurns);
 
   // Live Swerve 3 (CAN 31) diagnostics while driving
   frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_Temp_C", m_FL_Steer.GetDeviceTemp().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_Current_A", m_FL_Steer.GetStatorCurrent().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_DutyCycle", m_FL_Steer.GetDutyCycle().GetValueAsDouble());
 
-  // Rotation disabled: only forwards/backwards (y) and side-to-side (x)
+  // Rotation disabled: only forwards/backwards (y), side-to-side strafing (x), and diagonals (x + y)
   (void)x2;
   ROT = 0.0;
 
@@ -315,7 +364,7 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     FWD = temp;
   }
 
-  // Pure translation (exactly as in 3d1bb52 / 772febb): all 4 wheels turn to the EXACT SAME angle
+  // Pure translation (forward/backward, strafe, and any diagonal): all 4 wheels turn to the exact same angle
   const double targetAngleRad = std::atan2(STR, FWD);
   const double targetTurnsOffset = targetAngleRad / (2.0 * M_PI);
   const double targetSpeed = std::clamp(std::hypot(STR, FWD), 0.0, 1.0);
@@ -399,8 +448,8 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   frc::SmartDashboard::PutNumber("Swerve/BL_ZeroedTurns", curZeroedBL);
   frc::SmartDashboard::PutNumber("Swerve/BR_ZeroedTurns", curZeroedBR);
 
-  // All 4 steer motors use identical 1000 Hz PositionDutyCycle with RemoteCANcoder on "rio":
-  if (std::abs(errFL) > deadbandTurns) {
+  // All 4 steer motors use identical 1000 Hz PositionDutyCycle with RemoteCANcoder on "rio" (deadband = 0.0 by default):
+  if (deadbandTurns <= 0.0 || std::abs(errFL) > deadbandTurns) {
     m_FL_Steer.SetControl(steerm_speedFL.WithPosition(units::angle::turn_t{kSwerve3FLZeroTurns + targetTurnsOffset}));
   } else {
     m_FL_Steer.Set(0.0);
@@ -425,19 +474,19 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   //   m_FL_Steer.Set(0.0);
   // }
 
-  if (std::abs(errFR) > deadbandTurns) {
+  if (deadbandTurns <= 0.0 || std::abs(errFR) > deadbandTurns) {
     m_FR_Steer.SetControl(steerm_speedFR.WithPosition(units::angle::turn_t{kSwerve2FRZeroTurns + targetTurnsOffset}));
   } else {
     m_FR_Steer.Set(0.0);
   }
 
-  if (std::abs(errBL) > deadbandTurns) {
+  if (deadbandTurns <= 0.0 || std::abs(errBL) > deadbandTurns) {
     m_BL_Steer.SetControl(steerm_speedBL.WithPosition(units::angle::turn_t{kSwerve4BLZeroTurns + targetTurnsOffset}));
   } else {
     m_BL_Steer.Set(0.0);
   }
 
-  if (std::abs(errBR) > deadbandTurns) {
+  if (deadbandTurns <= 0.0 || std::abs(errBR) > deadbandTurns) {
     m_BR_Steer.SetControl(steerm_speedBR.WithPosition(units::angle::turn_t{kSwerve1BRZeroTurns + targetTurnsOffset}));
   } else {
     m_BR_Steer.Set(0.0);
