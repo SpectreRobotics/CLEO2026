@@ -26,11 +26,11 @@ namespace {
 // Straight-ahead AbsolutePosition readings from Phoenix Tuner X screenshots:
 //   Swerve 1 (BR, CANcoder 12 on "rio"):       -0.297363 turns
 //   Swerve 2 (FR, CANcoder 22 on "rio"):       -0.173584 turns
-//   Swerve 3 (FL, CANcoder 32 on "intakebus"): -0.171630 turns
+//   Swerve 3 (FL, CANcoder 32 on "intakebus"): -0.172119 turns
 //   Swerve 4 (BL, CANcoder 42 on "rio"):        0.158203 turns
 constexpr double kSwerve1BRZeroTurns = -0.297363;
 constexpr double kSwerve2FRZeroTurns = -0.173584;
-constexpr double kSwerve3FLZeroTurns = -0.17163;
+constexpr double kSwerve3FLZeroTurns = -0.172119;
 constexpr double kSwerve4BLZeroTurns =  0.158203;
 }  // namespace
 
