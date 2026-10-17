@@ -72,15 +72,7 @@ void Drivetrain::ConfigureMotors() {
   m_BL_Drive.GetConfigurator().Apply(driveConfig);
   m_BR_Drive.GetConfigurator().Apply(driveConfig);
 
-  // Swerve 3 (FL: Steer 31 on "rio", CANcoder 32 on "intakebus" or "rio"):
-  // Uses RotorSensor with 18:1 ratio seeded from CANcoder 32 for cross-bus compatibility
-  configFL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RotorSensor;
-  configFL.Feedback.SensorToMechanismRatio = 18.0;
-  configFL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(0.08);
-  configFL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  configFL.MotorOutput.PeakForwardDutyCycle = 0.35;
-  configFL.MotorOutput.PeakReverseDutyCycle = -0.35;
-  configFL.ClosedLoopGeneral.ContinuousWrap = true;
+  // DO NOT apply configs in code to CAN 31 (m_FL_Steer); uses Phoenix Tuner X flash settings
 
   // Steer Krakens (Swerve 2 FR, Swerve 4 BL, Swerve 1 BR):
   // Brake mode + reduced PeakDutyCycle (0.35) + 0.08s ramp + reduced kP (0.65) to eliminate oscillation
@@ -119,17 +111,12 @@ void Drivetrain::ConfigureMotors() {
   Posconfig.kI = ModuleI;
   Posconfig.kD = ModuleD;
 
-  m_FL_Steer.GetConfigurator().Apply(configFL);
-  m_FL_Steer.GetConfigurator().Apply(Posconfig);
   m_FR_Steer.GetConfigurator().Apply(configFR);
   m_FR_Steer.GetConfigurator().Apply(Posconfig);
   m_BL_Steer.GetConfigurator().Apply(configBL);
   m_BL_Steer.GetConfigurator().Apply(Posconfig);
   m_BR_Steer.GetConfigurator().Apply(configBR);
   m_BR_Steer.GetConfigurator().Apply(Posconfig);
-
-  // Seed Swerve 3 (FL Steer 31) from CANcoder 32
-  m_FL_Steer.SetPosition(units::angle::turn_t{GetCANcoderFLTurns()});
 
   // Publish editable PID & deadband fields to SmartDashboard for live tuning
   frc::SmartDashboard::PutNumber("Swerve/Steer_kP", ModuleP);
@@ -161,9 +148,7 @@ void Drivetrain::DisabledPeriodic() {
   m_BL_Steer.Set(0.0);
   m_BR_Steer.Set(0.0);
 
-  // Keep Swerve 3 (FL Steer 31) synchronized to CANcoder 32 absolute turns while disabled
   const double flCancoderRaw = GetCANcoderFLTurns();
-  m_FL_Steer.SetPosition(units::angle::turn_t{flCancoderRaw});
 
   // Check for live PID edits on SmartDashboard while disabled
   const double newP = frc::SmartDashboard::GetNumber("Swerve/Steer_kP", ModuleP);
@@ -178,7 +163,6 @@ void Drivetrain::DisabledPeriodic() {
     Posconfig.kP = ModuleP;
     Posconfig.kI = ModuleI;
     Posconfig.kD = ModuleD;
-    m_FL_Steer.GetConfigurator().Apply(Posconfig);
     m_FR_Steer.GetConfigurator().Apply(Posconfig);
     m_BL_Steer.GetConfigurator().Apply(Posconfig);
     m_BR_Steer.GetConfigurator().Apply(Posconfig);
@@ -285,7 +269,6 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     Posconfig.kP = ModuleP;
     Posconfig.kI = ModuleI;
     Posconfig.kD = ModuleD;
-    m_FL_Steer.GetConfigurator().Apply(Posconfig);
     m_FR_Steer.GetConfigurator().Apply(Posconfig);
     m_BL_Steer.GetConfigurator().Apply(Posconfig);
     m_BR_Steer.GetConfigurator().Apply(Posconfig);
@@ -328,31 +311,45 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     FWD = temp;
   }
 
-  // Ether / ChimiSwerve inverse kinematics combining translation (STR, FWD) and rotation (ROT)
-  const double A = STR - ROT * (DC::L / DC::R);
-  const double B = STR + ROT * (DC::L / DC::R);
-  const double C = FWD - ROT * (DC::W / DC::R);
-  const double D = FWD + ROT * (DC::W / DC::R);
+  if (std::abs(ROT) > 1e-4) {
+    // Ether / ChimiSwerve inverse kinematics combining translation (STR, FWD) and rotation (ROT)
+    const double A = STR - ROT * (DC::L / DC::R);
+    const double B = STR + ROT * (DC::L / DC::R);
+    const double C = FWD - ROT * (DC::W / DC::R);
+    const double D = FWD + ROT * (DC::W / DC::R);
 
-  speedFL = std::hypot(B, D);
-  speedFR = std::hypot(B, C);
-  speedBL = std::hypot(A, D);
-  speedBR = std::hypot(A, C);
+    speedFL = std::hypot(B, D);
+    speedFR = std::hypot(B, C);
+    speedBL = std::hypot(A, D);
+    speedBR = std::hypot(A, C);
 
-  // Normalize speeds to 1.0 maximum if translation + rotation exceeds 1.0
-  const double maxSpeed = std::max({speedFL, speedFR, speedBL, speedBR});
-  if (maxSpeed > 1.0) {
-    speedFL /= maxSpeed;
-    speedFR /= maxSpeed;
-    speedBL /= maxSpeed;
-    speedBR /= maxSpeed;
+    // Normalize speeds to 1.0 maximum if translation + rotation exceeds 1.0
+    const double maxSpeed = std::max({speedFL, speedFR, speedBL, speedBR});
+    if (maxSpeed > 1.0) {
+      speedFL /= maxSpeed;
+      speedFR /= maxSpeed;
+      speedBL /= maxSpeed;
+      speedBR /= maxSpeed;
+    }
+
+    // Calculate target steering angles (keeping previous angle if module speed is near zero)
+    if (speedFL > 1e-4) angleFL = std::atan2(B, D);
+    if (speedFR > 1e-4) angleFR = std::atan2(B, C);
+    if (speedBL > 1e-4) angleBL = std::atan2(A, D);
+    if (speedBR > 1e-4) angleBR = std::atan2(A, C);
+  } else {
+    // Pure translation exactly as in 772febb: all 4 wheels turn to identical angle
+    const double targetAngleRad = std::atan2(STR, FWD);
+    const double targetSpeed = std::clamp(std::hypot(STR, FWD), 0.0, 1.0);
+    angleFL = targetAngleRad;
+    angleFR = targetAngleRad;
+    angleBL = targetAngleRad;
+    angleBR = targetAngleRad;
+    speedFL = targetSpeed;
+    speedFR = targetSpeed;
+    speedBL = targetSpeed;
+    speedBR = targetSpeed;
   }
-
-  // Calculate target steering angles (keeping previous angle if module speed is near zero)
-  if (speedFL > 1e-4) angleFL = std::atan2(B, D);
-  if (speedFR > 1e-4) angleFR = std::atan2(B, C);
-  if (speedBL > 1e-4) angleBL = std::atan2(A, D);
-  if (speedBR > 1e-4) angleBR = std::atan2(A, C);
 
   const double targetTurnsFL = angleFL / (2.0 * M_PI);
   const double targetTurnsFR = angleFR / (2.0 * M_PI);
@@ -439,42 +436,28 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   const bool blConnected = CANcoderBL.IsConnected();
   const bool brConnected = CANcoderBR.IsConnected();
 
-  const double curPosFL = m_FL_Steer.GetPosition().GetValueAsDouble();
-  const double curPosFR = m_FR_Steer.GetPosition().GetValueAsDouble();
-  const double curPosBL = m_BL_Steer.GetPosition().GetValueAsDouble();
-  const double curPosBR = m_BR_Steer.GetPosition().GetValueAsDouble();
-
-  // Continuous shortest-path target positions relative to current motor position.
-  // Prevents multi-turn windup and 180-degree wrap flips.
-  const double cmdPosFL = curPosFL + errFL;
-  const double cmdPosFR = curPosFR + errFR;
-  const double cmdPosBL = curPosBL + errBL;
-  const double cmdPosBR = curPosBR + errBR;
-
-  // Active closed-loop angle holding while driving:
-  // Never cut steer power to Set(0.0) while driving! Cutting power causes wheel coasting,
-  // violent drive-reaction torque scrub, and 180-degree overshoot oscillation.
-  // Motors are safely stopped with Set(0.0) only when joystick is centered or encoder disconnected.
+  // Exactly as in 772febb: direct absolute target position commands
+  // ContinuousWrap handles shortest path smoothly without relative integration drift
   if (flConnected) {
-    m_FL_Steer.SetControl(steerm_speedFL.WithPosition(units::angle::turn_t{cmdPosFL}));
+    m_FL_Steer.SetControl(steerm_speedFL.WithPosition(units::angle::turn_t{kSwerve3FLZeroTurns + targetTurnsFL}));
   } else {
     m_FL_Steer.Set(0.0);
   }
 
   if (frConnected) {
-    m_FR_Steer.SetControl(steerm_speedFR.WithPosition(units::angle::turn_t{cmdPosFR}));
+    m_FR_Steer.SetControl(steerm_speedFR.WithPosition(units::angle::turn_t{kSwerve2FRZeroTurns + targetTurnsFR}));
   } else {
     m_FR_Steer.Set(0.0);
   }
 
   if (blConnected) {
-    m_BL_Steer.SetControl(steerm_speedBL.WithPosition(units::angle::turn_t{cmdPosBL}));
+    m_BL_Steer.SetControl(steerm_speedBL.WithPosition(units::angle::turn_t{kSwerve4BLZeroTurns + targetTurnsBL}));
   } else {
     m_BL_Steer.Set(0.0);
   }
 
   if (brConnected) {
-    m_BR_Steer.SetControl(steerm_speedBR.WithPosition(units::angle::turn_t{cmdPosBR}));
+    m_BR_Steer.SetControl(steerm_speedBR.WithPosition(units::angle::turn_t{kSwerve1BRZeroTurns + targetTurnsBR}));
   } else {
     m_BR_Steer.Set(0.0);
   }
