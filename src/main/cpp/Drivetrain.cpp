@@ -35,16 +35,30 @@ constexpr double kSwerve4BLZeroTurns =  0.158203;
 }  // namespace
 
 double Drivetrain::GetCANcoderFLTurns() {
+  double raw = 0.0;
   auto pos = CANcoderFL.GetAbsolutePosition();
   if (pos.GetStatus().IsOK()) {
-    return pos.GetValueAsDouble();
+    raw = pos.GetValueAsDouble();
+  } else {
+    static ctre::phoenix6::hardware::CANcoder CANcoderFL_rio{DC::kFLEncoderId, ctre::phoenix6::CANBus{DC::kCanBus}};
+    auto rioPos = CANcoderFL_rio.GetAbsolutePosition();
+    if (rioPos.GetStatus().IsOK()) {
+      raw = rioPos.GetValueAsDouble();
+    } else {
+      raw = pos.GetValueAsDouble();
+    }
   }
-  static ctre::phoenix6::hardware::CANcoder CANcoderFL_rio{DC::kFLEncoderId, ctre::phoenix6::CANBus{DC::kCanBus}};
-  auto rioPos = CANcoderFL_rio.GetAbsolutePosition();
-  if (rioPos.GetStatus().IsOK()) {
-    return rioPos.GetValueAsDouble();
+
+  // Filter out the ~0.004 turn CANcoder 32 bounce so small sensor jitter never triggers oscillation
+  static bool s_initialized = false;
+  static double s_filteredTurns = 0.0;
+  if (!s_initialized) {
+    s_filteredTurns = raw;
+    s_initialized = true;
+  } else if (std::abs(std::remainder(raw - s_filteredTurns, 1.0)) > 0.0045) {
+    s_filteredTurns = raw;
   }
-  return pos.GetValueAsDouble();
+  return s_filteredTurns;
 }
 
 bool Drivetrain::IsCANcoderFLConnected() {
@@ -77,17 +91,16 @@ void Drivetrain::ConfigureMotors() {
   Posconfig.kD = ModuleD;
 
   // Swerve 3 (FL, Steer 31 on "rio", CANcoder 32 on "intakebus"):
-  // Because Steer 31 ("rio") and CANcoder 32 ("intakebus") are on different CAN buses,
-  // setting RemoteCANcoder on Steer 31 causes a missing-remote-sensor fault (solid orange, no movement).
-  // Instead, configure Steer 31 with RotorSensor + Brake mode and run the closed-loop PID on the roboRIO
-  // directly from GetCANcoderFLTurns() via m_FL_Steer.Set(dutyCycle).
+  // Driven from absolute encoder CANcoder 32 in software (since CANcoder 32 is on "intakebus")
+  // with the same 0.35 PeakDutyCycle, 0.08s ramp, Brake mode, and ModuleP as FR, BL, and BR.
   configFL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RotorSensor;
+  configFL.OpenLoopRamps.DutyCycleOpenLoopRampPeriod = units::time::second_t(0.08);
   configFL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  configFL.MotorOutput.PeakForwardDutyCycle = 1.0;
-  configFL.MotorOutput.PeakReverseDutyCycle = -1.0;
+  configFL.MotorOutput.PeakForwardDutyCycle = 0.35;
+  configFL.MotorOutput.PeakReverseDutyCycle = -0.35;
 
   // Steer Krakens (Swerve 2 FR, Swerve 4 BL, Swerve 1 BR):
-  // Brake mode + reduced PeakDutyCycle (0.35) + 0.08s ramp + yesterday's tuned PID (0.75, 0.0001, 1.0)
+  // Brake mode + reduced PeakDutyCycle (0.35) + 0.08s ramp + tuned PID
   configFR.Feedback.FeedbackRemoteSensorID = CANcoderFR.GetDeviceID();
   configFR.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
   configFR.Feedback.SensorToMechanismRatio = 1.0;
@@ -132,7 +145,6 @@ void Drivetrain::ConfigureMotors() {
   frc::SmartDashboard::PutNumber("Swerve/Steer_kP", ModuleP);
   frc::SmartDashboard::PutNumber("Swerve/Steer_kI", ModuleI);
   frc::SmartDashboard::PutNumber("Swerve/Steer_kD", ModuleD);
-  frc::SmartDashboard::PutNumber("Swerve/FL_Steer_kP", 1.5);
   frc::SmartDashboard::PutNumber("Swerve/Steer_DeadbandTurns", DC::kSteerDeadbandTurns);
 }
 
@@ -158,6 +170,8 @@ void Drivetrain::DisabledPeriodic() {
   m_BL_Steer.Set(0.0);
   m_BR_Steer.Set(0.0);
 
+  const double flCancoderRaw = GetCANcoderFLTurns();
+
   // Check for live PID edits on SmartDashboard while disabled
   const double newP = frc::SmartDashboard::GetNumber("Swerve/Steer_kP", ModuleP);
   const double newI = frc::SmartDashboard::GetNumber("Swerve/Steer_kI", ModuleI);
@@ -176,7 +190,7 @@ void Drivetrain::DisabledPeriodic() {
     m_BR_Steer.GetConfigurator().Apply(Posconfig);
   }
 
-  const double curFLTurns = std::remainder(GetCANcoderFLTurns() - kSwerve3FLZeroTurns, 1.0);
+  const double curFLTurns = std::remainder(flCancoderRaw - kSwerve3FLZeroTurns, 1.0);
   const double curFRTurns = std::remainder(m_FR_Steer.GetPosition().GetValueAsDouble() - kSwerve2FRZeroTurns, 1.0);
   const double curBLTurns = std::remainder(m_BL_Steer.GetPosition().GetValueAsDouble() - kSwerve4BLZeroTurns, 1.0);
   const double curBRTurns = std::remainder(m_BR_Steer.GetPosition().GetValueAsDouble() - kSwerve1BRZeroTurns, 1.0);
@@ -197,7 +211,7 @@ void Drivetrain::DisabledPeriodic() {
   frc::SmartDashboard::PutNumber("Swerve/BR_ZeroedTurns", curBRTurns);
 
   // Raw CANcoder absolute readings
-  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FL_RawTurns", GetCANcoderFLTurns());
+  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FL_RawTurns", flCancoderRaw);
   frc::SmartDashboard::PutNumber("Swerve/CANcoder_FR_RawTurns", CANcoderFR.GetAbsolutePosition().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Swerve/CANcoder_BL_RawTurns", CANcoderBL.GetAbsolutePosition().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Swerve/CANcoder_BR_RawTurns", CANcoderBR.GetAbsolutePosition().GetValueAsDouble());
@@ -220,7 +234,7 @@ void Drivetrain::TestZeroAzimuth() {
   const double curZeroedFL = std::remainder(GetCANcoderFLTurns() - kSwerve3FLZeroTurns, 1.0);
   const double errFL = std::remainder(0.0 - curZeroedFL, 1.0);
   if (std::abs(errFL) > DC::kSteerDeadbandTurns) {
-    m_FL_Steer.Set(std::clamp(errFL * 1.5, -0.45, 0.45));
+    m_FL_Steer.Set(std::clamp(errFL * static_cast<double>(ModuleP), -0.35, 0.35));
   } else {
     m_FL_Steer.Set(0.0);
   }
@@ -289,7 +303,7 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     return;
   }
 
-  // Get zeroed wheel angles in radians for all 4 swerve modules (FL from CANcoder 32, FR/BL/BR from RemoteCANcoder)
+  // Get zeroed wheel angles in radians for all 4 swerve modules (FL from absolute CANcoder 32)
   const double curZeroedFL = std::remainder(GetCANcoderFLTurns() - kSwerve3FLZeroTurns, 1.0);
   const double curZeroedFR = std::remainder(m_FR_Steer.GetPosition().GetValueAsDouble() - kSwerve2FRZeroTurns, 1.0);
   const double curZeroedBL = std::remainder(m_BL_Steer.GetPosition().GetValueAsDouble() - kSwerve4BLZeroTurns, 1.0);
@@ -393,8 +407,7 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   frc::SmartDashboard::PutNumber("Swerve/BR_ZeroedTurns", curZeroedBR);
 
   if (std::abs(errFL) > deadbandTurns) {
-    const double flKp = frc::SmartDashboard::GetNumber("Swerve/FL_Steer_kP", 1.5);
-    const double flDuty = std::clamp(errFL * flKp, -0.45, 0.45);
+    const double flDuty = std::clamp(errFL * static_cast<double>(ModuleP), -0.35, 0.35);
     m_FL_Steer.Set(flDuty);
   } else {
     m_FL_Steer.Set(0.0);
