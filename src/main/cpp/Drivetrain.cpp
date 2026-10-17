@@ -67,23 +67,32 @@ void Drivetrain::ConfigureMotors() {
   driveConfig.ClosedLoopRamps.VoltageClosedLoopRampPeriod = units::time::second_t(0.5);
   driveConfig.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
 
-  m_FL_Drive.GetConfigurator().Apply(driveConfig);
-  m_FR_Drive.GetConfigurator().Apply(driveConfig);
-  m_BL_Drive.GetConfigurator().Apply(driveConfig);
-  m_BR_Drive.GetConfigurator().Apply(driveConfig);
+  m_FL_Drive.GetConfigurator().Apply(driveConfig, 100_ms);
+  m_FR_Drive.GetConfigurator().Apply(driveConfig, 100_ms);
+  m_BL_Drive.GetConfigurator().Apply(driveConfig, 100_ms);
+  m_BR_Drive.GetConfigurator().Apply(driveConfig, 100_ms);
 
-  // Steer Krakens (all 4 modules: Swerve 3 FL, Swerve 2 FR, Swerve 4 BL, Swerve 1 BR):
-  // Brake mode + reduced PeakDutyCycle (0.35) + 0.08s ramp + yesterday's tuned PID (0.75, 0.0001, 1.0)
+  Posconfig.kP = ModuleP;
+  Posconfig.kI = ModuleI;
+  Posconfig.kD = ModuleD;
+
+  // Swerve 3 (FL, CAN 31): Boosted PeakDutyCycle (0.85), faster ramp (0.01s), higher kP (1.8),
+  // and lower kD damping (0.1) so derivative braking does not slow down Swerve 3
   configFL.Feedback.FeedbackRemoteSensorID = CANcoderFL.GetDeviceID();
   configFL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
   configFL.Feedback.SensorToMechanismRatio = 1.0;
   configFL.Feedback.RotorToSensorRatio = 18;
-  configFL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(0.08);
+  configFL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(0.01);
   configFL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  configFL.MotorOutput.PeakForwardDutyCycle = 0.35;
-  configFL.MotorOutput.PeakReverseDutyCycle = -0.35;
+  configFL.MotorOutput.PeakForwardDutyCycle = 0.85;
+  configFL.MotorOutput.PeakReverseDutyCycle = -0.85;
   configFL.ClosedLoopGeneral.ContinuousWrap = true;
+  configFL.Slot0.kP = 1.8;
+  configFL.Slot0.kI = 0.0001;
+  configFL.Slot0.kD = 0.1;
 
+  // Steer Krakens (Swerve 2 FR, Swerve 4 BL, Swerve 1 BR):
+  // Brake mode + reduced PeakDutyCycle (0.35) + 0.08s ramp + yesterday's tuned PID (0.75, 0.0001, 1.0)
   configFR.Feedback.FeedbackRemoteSensorID = CANcoderFR.GetDeviceID();
   configFR.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
   configFR.Feedback.SensorToMechanismRatio = 1.0;
@@ -93,6 +102,7 @@ void Drivetrain::ConfigureMotors() {
   configFR.MotorOutput.PeakForwardDutyCycle = 0.35;
   configFR.MotorOutput.PeakReverseDutyCycle = -0.35;
   configFR.ClosedLoopGeneral.ContinuousWrap = true;
+  configFR.Slot0 = Posconfig;
 
   configBL.Feedback.FeedbackRemoteSensorID = CANcoderBL.GetDeviceID();
   configBL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
@@ -103,6 +113,7 @@ void Drivetrain::ConfigureMotors() {
   configBL.MotorOutput.PeakForwardDutyCycle = 0.35;
   configBL.MotorOutput.PeakReverseDutyCycle = -0.35;
   configBL.ClosedLoopGeneral.ContinuousWrap = true;
+  configBL.Slot0 = Posconfig;
 
   configBR.Feedback.FeedbackRemoteSensorID = CANcoderBR.GetDeviceID();
   configBR.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
@@ -113,24 +124,21 @@ void Drivetrain::ConfigureMotors() {
   configBR.MotorOutput.PeakForwardDutyCycle = 0.35;
   configBR.MotorOutput.PeakReverseDutyCycle = -0.35;
   configBR.ClosedLoopGeneral.ContinuousWrap = true;
+  configBR.Slot0 = Posconfig;
 
-  Posconfig.kP = ModuleP;
-  Posconfig.kI = ModuleI;
-  Posconfig.kD = ModuleD;
+  auto flStatus = m_FL_Steer.GetConfigurator().Apply(configFL, 100_ms);
+  m_FR_Steer.GetConfigurator().Apply(configFR, 100_ms);
+  m_BL_Steer.GetConfigurator().Apply(configBL, 100_ms);
+  m_BR_Steer.GetConfigurator().Apply(configBR, 100_ms);
 
-  m_FL_Steer.GetConfigurator().Apply(configFL);
-  m_FL_Steer.GetConfigurator().Apply(Posconfig);
-  m_FR_Steer.GetConfigurator().Apply(configFR);
-  m_FR_Steer.GetConfigurator().Apply(Posconfig);
-  m_BL_Steer.GetConfigurator().Apply(configBL);
-  m_BL_Steer.GetConfigurator().Apply(Posconfig);
-  m_BR_Steer.GetConfigurator().Apply(configBR);
-  m_BR_Steer.GetConfigurator().Apply(Posconfig);
+  frc::SmartDashboard::PutString("Diagnostics/FL_Steer_ConfigStatus", flStatus.GetName());
 
   // Publish editable PID & deadband fields to SmartDashboard for live tuning
   frc::SmartDashboard::PutNumber("Swerve/Steer_kP", ModuleP);
   frc::SmartDashboard::PutNumber("Swerve/Steer_kI", ModuleI);
   frc::SmartDashboard::PutNumber("Swerve/Steer_kD", ModuleD);
+  frc::SmartDashboard::PutNumber("Swerve/FL_Steer_kP", configFL.Slot0.kP);
+  frc::SmartDashboard::PutNumber("Swerve/FL_Steer_kD", configFL.Slot0.kD);
   frc::SmartDashboard::PutNumber("Swerve/Steer_DeadbandTurns", DC::kSteerDeadbandTurns);
 }
 
@@ -169,10 +177,20 @@ void Drivetrain::DisabledPeriodic() {
     Posconfig.kP = ModuleP;
     Posconfig.kI = ModuleI;
     Posconfig.kD = ModuleD;
-    m_FL_Steer.GetConfigurator().Apply(Posconfig);
     m_FR_Steer.GetConfigurator().Apply(Posconfig);
     m_BL_Steer.GetConfigurator().Apply(Posconfig);
     m_BR_Steer.GetConfigurator().Apply(Posconfig);
+  }
+
+  const double curFLP = static_cast<double>(configFL.Slot0.kP);
+  const double curFLD = static_cast<double>(configFL.Slot0.kD);
+  const double newFLP = frc::SmartDashboard::GetNumber("Swerve/FL_Steer_kP", curFLP);
+  const double newFLD = frc::SmartDashboard::GetNumber("Swerve/FL_Steer_kD", curFLD);
+  if (std::abs(newFLP - curFLP) > 1e-5 ||
+      std::abs(newFLD - curFLD) > 1e-5) {
+    configFL.Slot0.kP = newFLP;
+    configFL.Slot0.kD = newFLD;
+    m_FL_Steer.GetConfigurator().Apply(configFL.Slot0);
   }
 
   const double curFLTurns = std::remainder(m_FL_Steer.GetPosition().GetValueAsDouble() - kSwerve3FLZeroTurns, 1.0);
@@ -200,6 +218,11 @@ void Drivetrain::DisabledPeriodic() {
   frc::SmartDashboard::PutNumber("Swerve/CANcoder_FR_RawTurns", CANcoderFR.GetAbsolutePosition().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Swerve/CANcoder_BL_RawTurns", CANcoderBL.GetAbsolutePosition().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Swerve/CANcoder_BR_RawTurns", CANcoderBR.GetAbsolutePosition().GetValueAsDouble());
+
+  // Swerve 3 (CAN 31) hardware diagnostics
+  frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_Temp_C", m_FL_Steer.GetDeviceTemp().GetValueAsDouble());
+  frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_Current_A", m_FL_Steer.GetStatorCurrent().GetValueAsDouble());
+  frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_DutyCycle", m_FL_Steer.GetDutyCycle().GetValueAsDouble());
 
   // Wheel straight alignment indicator (|angle| < 3 degrees)
   bool wheelsStraight = (std::abs(curFLDeg) < 3.0) &&
@@ -249,11 +272,26 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     Posconfig.kP = ModuleP;
     Posconfig.kI = ModuleI;
     Posconfig.kD = ModuleD;
-    m_FL_Steer.GetConfigurator().Apply(Posconfig);
     m_FR_Steer.GetConfigurator().Apply(Posconfig);
     m_BL_Steer.GetConfigurator().Apply(Posconfig);
     m_BR_Steer.GetConfigurator().Apply(Posconfig);
   }
+
+  const double curFLP = static_cast<double>(configFL.Slot0.kP);
+  const double curFLD = static_cast<double>(configFL.Slot0.kD);
+  const double newFLP = frc::SmartDashboard::GetNumber("Swerve/FL_Steer_kP", curFLP);
+  const double newFLD = frc::SmartDashboard::GetNumber("Swerve/FL_Steer_kD", curFLD);
+  if (std::abs(newFLP - curFLP) > 1e-5 ||
+      std::abs(newFLD - curFLD) > 1e-5) {
+    configFL.Slot0.kP = newFLP;
+    configFL.Slot0.kD = newFLD;
+    m_FL_Steer.GetConfigurator().Apply(configFL.Slot0);
+  }
+
+  // Live Swerve 3 (CAN 31) diagnostics while driving
+  frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_Temp_C", m_FL_Steer.GetDeviceTemp().GetValueAsDouble());
+  frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_Current_A", m_FL_Steer.GetStatorCurrent().GetValueAsDouble());
+  frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_DutyCycle", m_FL_Steer.GetDutyCycle().GetValueAsDouble());
 
   // Rotation disabled: only forwards/backwards (y) and side-to-side (x)
   (void)x2;
