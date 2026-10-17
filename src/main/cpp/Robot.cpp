@@ -26,6 +26,16 @@ Robot::Robot() {
   m_driveModeChooser.SetDefaultOption("RobotCentric", "RobotCentric");
   m_driveModeChooser.AddOption("FieldCentric", "FieldCentric");
   frc::SmartDashboard::PutData("Drive Mode", &m_driveModeChooser);
+  frc::SmartDashboard::PutBoolean("Drive/FieldCentric", false);
+
+  // Robot orientation chooser - reverses forward and backward facing direction
+  m_orientationChooser.SetDefaultOption("Forward (Normal)", "Forward");
+  m_orientationChooser.AddOption("Reversed (180 deg)", "Reversed");
+  frc::SmartDashboard::PutData("Robot Orientation", &m_orientationChooser);
+  frc::SmartDashboard::PutBoolean("Drive/ReverseDirection", false);
+
+  // Button to reset gyro heading from SmartDashboard
+  frc::SmartDashboard::PutBoolean("Reset Gyro", false);
 
   // Configure swerve drivetrain motors and zero gyro heading on boot
   m_pigeon.Reset();
@@ -36,13 +46,17 @@ void Robot::RobotPeriodic() {
   // Pigeon2 yaw is CCW-positive; ChimiSwerve convention is CLOCKWISE-positive.
   GyroValue = -std::fmod(m_pigeon.GetYaw().GetValueAsDouble(), 360.0);
 
-  // Reset gyro heading: 'Cross', 'Create' (Share), 'Options', or 'Touchpad' (PS5)
-  bool resetPressed = GetDriverResetGyroPressed();
+  // Reset gyro heading: 'Touchpad' (box), 'Square' (box), 'Create', 'Options', or SmartDashboard
+  bool dashboardReset = frc::SmartDashboard::GetBoolean("Reset Gyro", false);
+  bool resetPressed = GetDriverResetGyroPressed() || dashboardReset;
   if (resetPressed) {
     m_pigeon.Reset();
     GyroValue = 0.0;
     m_swerve.ResetHeading(0.0);
     m_swerve.ResetOdometry();
+    if (dashboardReset) {
+      frc::SmartDashboard::PutBoolean("Reset Gyro", false);
+    }
   }
 
   frc::SmartDashboard::PutBoolean("Driver/ResetButtonPressed", resetPressed);
@@ -108,9 +122,21 @@ void Robot::TeleopPeriodic() {
         rawx2);
   }
 
+  // Reverse orientation toggle from SmartDashboard (dropdown chooser or checkbox toggle)
+  bool reverseFromChooser = (m_orientationChooser.GetSelected() == "Reversed");
+  bool reverseFromToggle = frc::SmartDashboard::GetBoolean("Drive/ReverseDirection", false);
+  bool reverseForward = reverseFromChooser || reverseFromToggle;
+  if (reverseForward) {
+    x = -x;
+    y = -y;
+  }
+  frc::SmartDashboard::PutBoolean("Drive/IsReversed", reverseForward);
+
   // Drive mode: default is RobotCentric; only FieldCentric when explicitly selected and gyro connected
-  bool wantFieldCentric = (m_driveModeChooser.GetSelected() == "FieldCentric");
-  FieldCentric = wantFieldCentric && m_pigeon.IsConnected();
+  bool wantFieldFromChooser = (m_driveModeChooser.GetSelected() == "FieldCentric");
+  bool wantFieldFromToggle = frc::SmartDashboard::GetBoolean("Drive/FieldCentric", false);
+  FieldCentric = (wantFieldFromChooser || wantFieldFromToggle) && m_pigeon.IsConnected();
+  frc::SmartDashboard::PutBoolean("Drive/IsFieldCentric", FieldCentric);
 
   // Telemetry for verifying driver inputs live on SmartDashboard
   int activePort = GetDriverPort();
@@ -249,10 +275,11 @@ bool Robot::GetDriverRightBumperPressed() {
 bool Robot::GetDriverResetGyroPressed() {
   int port = GetDriverPort();
   auto& c = (port == 1) ? m_ps5Controller1 : m_ps5Controller0;
-  return c.GetCrossButtonPressed() ||
+  return c.GetTouchpadButtonPressed() ||
+         c.GetSquareButtonPressed() ||
          c.GetCreateButtonPressed() ||
          c.GetOptionsButtonPressed() ||
-         c.GetTouchpadButtonPressed();
+         c.GetCrossButtonPressed();
 }
 
 bool Robot::GetDriverCrossButton() const {

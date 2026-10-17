@@ -80,6 +80,7 @@ class Robot : public frc::TimedRobot {
   bool FieldCentric = false;
 
   frc::SendableChooser<std::string> m_driveModeChooser;
+  frc::SendableChooser<std::string> m_orientationChooser;
 
   // ========== REV Servo Hub (CAN ID 62 on "rio" bus) ==========
   // Two servos defined on channels 2 and 3
