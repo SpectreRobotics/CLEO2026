@@ -51,9 +51,13 @@ void Drivetrain::ConfigureMotors() {
   hardware::TalonFX& frDrive = swapM2 ? m_FR_Steer : m_FR_Drive;
   hardware::TalonFX& frSteer = swapM2 ? m_FR_Drive : m_FR_Steer;
 
+  bool swapM4 = frc::SmartDashboard::GetBoolean("Drive/Swap_Module4_IDs", false);
+  hardware::TalonFX& blDrive = swapM4 ? m_BL_Steer : m_BL_Drive;
+  hardware::TalonFX& blSteer = swapM4 ? m_BL_Drive : m_BL_Steer;
+
   m_FL_Drive.GetConfigurator().Apply(driveConfig, 100_ms);
   frDrive.GetConfigurator().Apply(driveConfig, 100_ms);
-  m_BL_Drive.GetConfigurator().Apply(driveConfig, 100_ms);
+  blDrive.GetConfigurator().Apply(driveConfig, 100_ms);
   m_BR_Drive.GetConfigurator().Apply(driveConfig, 100_ms);
 
   // Steer motors fully disabled: pure open-loop RotorSensor mode, Brake mode, 0 output
@@ -66,12 +70,12 @@ void Drivetrain::ConfigureMotors() {
 
   auto flStatus = m_FL_Steer.GetConfigurator().Apply(steerBrakeConfig, 100_ms);
   frSteer.GetConfigurator().Apply(steerBrakeConfig, 100_ms);
-  m_BL_Steer.GetConfigurator().Apply(steerBrakeConfig, 100_ms);
+  blSteer.GetConfigurator().Apply(steerBrakeConfig, 100_ms);
   m_BR_Steer.GetConfigurator().Apply(steerBrakeConfig, 100_ms);
 
   m_FL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   frSteer.SetControl(ctre::phoenix6::controls::NeutralOut{});
-  m_BL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  blSteer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   m_BR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
 
   frc::SmartDashboard::PutString("Diagnostics/FL_Steer_ConfigStatus", flStatus.GetName());
@@ -80,8 +84,10 @@ void Drivetrain::ConfigureMotors() {
   static bool s_dashInitialized = false;
   if (!s_dashInitialized) {
     frc::SmartDashboard::PutBoolean("Drive/Swap_Module2_IDs", false);
+    frc::SmartDashboard::PutBoolean("Drive/Swap_Module4_IDs", false);
     frc::SmartDashboard::PutBoolean("Drive/Invert_BR_Drive", DC::kBRDriveInverted);
     frc::SmartDashboard::PutBoolean("Drive/Invert_FR_Drive", false);
+    frc::SmartDashboard::PutBoolean("Drive/Invert_BL_Drive", false);
     frc::SmartDashboard::PutNumber("Tank/TurnSensitivity", 0.75);
     frc::SmartDashboard::PutNumber("Tank/DriveBaseSpeed", 0.50);
     frc::SmartDashboard::PutNumber("Swerve/Steer_kP", ModuleP);
@@ -140,13 +146,17 @@ void Drivetrain::DisabledInit() {
   hardware::TalonFX& frDrive = swapM2 ? m_FR_Steer : m_FR_Drive;
   hardware::TalonFX& frSteer = swapM2 ? m_FR_Drive : m_FR_Steer;
 
+  bool swapM4 = frc::SmartDashboard::GetBoolean("Drive/Swap_Module4_IDs", false);
+  hardware::TalonFX& blDrive = swapM4 ? m_BL_Steer : m_BL_Drive;
+  hardware::TalonFX& blSteer = swapM4 ? m_BL_Drive : m_BL_Steer;
+
   m_FL_Drive.Set(0.0);
   frDrive.Set(0.0);
-  m_BL_Drive.Set(0.0);
+  blDrive.Set(0.0);
   m_BR_Drive.Set(0.0);
   m_FL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   frSteer.SetControl(ctre::phoenix6::controls::NeutralOut{});
-  m_BL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  blSteer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   m_BR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   oldspeedFL = 0; oldspeedFR = 0; oldspeedBL = 0; oldspeedBR = 0;
   m_flipFL = false; m_flipFR = false; m_flipBL = false; m_flipBR = false;
@@ -162,13 +172,17 @@ void Drivetrain::DisabledPeriodic() {
   hardware::TalonFX& frDrive = swapM2 ? m_FR_Steer : m_FR_Drive;
   hardware::TalonFX& frSteer = swapM2 ? m_FR_Drive : m_FR_Steer;
 
+  bool swapM4 = frc::SmartDashboard::GetBoolean("Drive/Swap_Module4_IDs", false);
+  hardware::TalonFX& blDrive = swapM4 ? m_BL_Steer : m_BL_Drive;
+  hardware::TalonFX& blSteer = swapM4 ? m_BL_Drive : m_BL_Steer;
+
   m_FL_Drive.Set(0.0);
   frDrive.Set(0.0);
-  m_BL_Drive.Set(0.0);
+  blDrive.Set(0.0);
   m_BR_Drive.Set(0.0);
   m_FL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   frSteer.SetControl(ctre::phoenix6::controls::NeutralOut{});
-  m_BL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  blSteer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   m_BR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   m_wasDriving = false;
 
@@ -235,13 +249,17 @@ void Drivetrain::TestZeroAzimuth() {
   hardware::TalonFX& frDrive = swapM2 ? m_FR_Steer : m_FR_Drive;
   hardware::TalonFX& frSteer = swapM2 ? m_FR_Drive : m_FR_Steer;
 
+  bool swapM4 = frc::SmartDashboard::GetBoolean("Drive/Swap_Module4_IDs", false);
+  hardware::TalonFX& blDrive = swapM4 ? m_BL_Steer : m_BL_Drive;
+  hardware::TalonFX& blSteer = swapM4 ? m_BL_Drive : m_BL_Steer;
+
   m_FL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   frSteer.SetControl(ctre::phoenix6::controls::NeutralOut{});
-  m_BL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  blSteer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   m_BR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   m_FL_Drive.Set(0.0);
   frDrive.Set(0.0);
-  m_BL_Drive.Set(0.0);
+  blDrive.Set(0.0);
   m_BR_Drive.Set(0.0);
 }
 
@@ -250,14 +268,18 @@ void Drivetrain::TestRotateModules(double speed) {
   hardware::TalonFX& frDrive = swapM2 ? m_FR_Steer : m_FR_Drive;
   hardware::TalonFX& frSteer = swapM2 ? m_FR_Drive : m_FR_Steer;
 
+  bool swapM4 = frc::SmartDashboard::GetBoolean("Drive/Swap_Module4_IDs", false);
+  hardware::TalonFX& blDrive = swapM4 ? m_BL_Steer : m_BL_Drive;
+  hardware::TalonFX& blSteer = swapM4 ? m_BL_Drive : m_BL_Steer;
+
   // Swerve is disabled: Steer motors never spin, strictly held in Brake mode
   m_FL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   frSteer.SetControl(ctre::phoenix6::controls::NeutralOut{});
-  m_BL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  blSteer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   m_BR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   m_FL_Drive.Set(0.0);
   frDrive.Set(0.0);
-  m_BL_Drive.Set(0.0);
+  blDrive.Set(0.0);
   m_BR_Drive.Set(0.0);
 }
 
@@ -268,19 +290,25 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   hardware::TalonFX& frDrive = swapM2 ? m_FR_Steer : m_FR_Drive;
   hardware::TalonFX& frSteer = swapM2 ? m_FR_Drive : m_FR_Steer;
 
+  bool swapM4 = frc::SmartDashboard::GetBoolean("Drive/Swap_Module4_IDs", false);
+  hardware::TalonFX& blDrive = swapM4 ? m_BL_Steer : m_BL_Drive;
+  hardware::TalonFX& blSteer = swapM4 ? m_BL_Drive : m_BL_Steer;
+
   // Steer motors permanently commanded 0.0 power in Brake mode
   // Modules stay locked mechanically where manually aligned before match start
   m_FL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   frSteer.SetControl(ctre::phoenix6::controls::NeutralOut{});
-  m_BL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  blSteer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   m_BR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
 
-  // Live Swerve 3 (CAN 31) & Swerve 2 (CAN 20/21) diagnostics while driving
+  // Live Swerve diagnostics while driving
   frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_Temp_C", m_FL_Steer.GetDeviceTemp().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_Current_A", m_FL_Steer.GetStatorCurrent().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_DutyCycle", m_FL_Steer.GetDutyCycle().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Diagnostics/FR_Steer_Current_A", frSteer.GetStatorCurrent().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Diagnostics/FR_Drive_Current_A", frDrive.GetStatorCurrent().GetValueAsDouble());
+  frc::SmartDashboard::PutNumber("Diagnostics/BL_Steer_Current_A", blSteer.GetStatorCurrent().GetValueAsDouble());
+  frc::SmartDashboard::PutNumber("Diagnostics/BL_Drive_Current_A", blDrive.GetStatorCurrent().GetValueAsDouble());
 
   // ========== TANK DRIVE ONLY (Swerve Fully Disabled) ==========
   // Forward/backward throttle from Left Stick Y (y)
@@ -346,10 +374,11 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   // Right side: FR is positive (+oldspeedFR), BR is negated (-oldspeedBR) to match FR forward direction.
   bool invertBR = frc::SmartDashboard::GetBoolean("Drive/Invert_BR_Drive", DC::kBRDriveInverted);
   bool invertFR = frc::SmartDashboard::GetBoolean("Drive/Invert_FR_Drive", false);
+  bool invertBL = frc::SmartDashboard::GetBoolean("Drive/Invert_BL_Drive", false);
 
   double cmdFL = std::clamp(-oldspeedFL * cap, -cap, cap);
   double cmdFR = std::clamp((invertFR ? -oldspeedFR : oldspeedFR) * cap, -cap, cap);
-  double cmdBL = std::clamp(-oldspeedBL * cap, -cap, cap);
+  double cmdBL = std::clamp((invertBL ? oldspeedBL : -oldspeedBL) * cap, -cap, cap);
   double cmdBR = std::clamp((invertBR ? -oldspeedBR : oldspeedBR) * cap, -cap, cap);
 
   // When stopped, enforce true 0.0
@@ -360,7 +389,7 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
 
   m_FL_Drive.Set(cmdFL);
   frDrive.Set(cmdFR);
-  m_BL_Drive.Set(cmdBL);
+  blDrive.Set(cmdBL);
   m_BR_Drive.Set(cmdBR);
 
   frc::SmartDashboard::PutNumber("Tank/Cmd_FL", cmdFL);
@@ -370,7 +399,7 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
 
   double wheelSpeedFL = (m_FL_Drive.GetVelocity().GetValueAsDouble() / 6.0375) * (M_PI * 0.0889);
   double wheelSpeedFR = (frDrive.GetVelocity().GetValueAsDouble() / 6.0375) * (M_PI * 0.0889);
-  double wheelSpeedBL = (m_BL_Drive.GetVelocity().GetValueAsDouble() / 6.0375) * (M_PI * 0.0889);
+  double wheelSpeedBL = (blDrive.GetVelocity().GetValueAsDouble() / 6.0375) * (M_PI * 0.0889);
   double wheelSpeedBR = (m_BR_Drive.GetVelocity().GetValueAsDouble() / 6.0375) * (M_PI * 0.0889);
 
   odometryUpdate(0.0, 0.0, 0.0, 0.0, wheelSpeedFL, wheelSpeedFR, wheelSpeedBL, wheelSpeedBR, GyroValue);
@@ -523,9 +552,11 @@ void Drivetrain::UpdateSim(units::time::second_t dt) {
   };
   bool swapM2 = frc::SmartDashboard::GetBoolean("Drive/Swap_Module2_IDs", false);
   hardware::TalonFX& frDrive = swapM2 ? m_FR_Steer : m_FR_Drive;
+  bool swapM4 = frc::SmartDashboard::GetBoolean("Drive/Swap_Module4_IDs", false);
+  hardware::TalonFX& blDrive = swapM4 ? m_BL_Steer : m_BL_Drive;
   simDrive(m_FL_Drive, -oldspeedFL / 2.0);
   simDrive(frDrive, oldspeedFR / 2.0);
-  simDrive(m_BL_Drive, -oldspeedBL / 2.0);
+  simDrive(blDrive, -oldspeedBL / 2.0);
   simDrive(m_BR_Drive, -oldspeedBR / 2.0);
 
   const double tFL = (angleFL / M_PI) / 2.0;

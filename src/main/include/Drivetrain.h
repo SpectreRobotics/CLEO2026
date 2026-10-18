@@ -96,13 +96,13 @@ class Drivetrain {
   // Kraken Drive motors *0
   ctre::phoenix6::hardware::TalonFX m_FL_Drive{30};
   ctre::phoenix6::hardware::TalonFX m_FR_Drive{DrivetrainConstants::kFRDriveId};
-  ctre::phoenix6::hardware::TalonFX m_BL_Drive{40};
+  ctre::phoenix6::hardware::TalonFX m_BL_Drive{DrivetrainConstants::kBLDriveId};
   ctre::phoenix6::hardware::TalonFX m_BR_Drive{10};
 
   // Kraken Steering motors *1
   ctre::phoenix6::hardware::TalonFX m_FL_Steer{31};
   ctre::phoenix6::hardware::TalonFX m_FR_Steer{DrivetrainConstants::kFRSteerId};
-  ctre::phoenix6::hardware::TalonFX m_BL_Steer{41};
+  ctre::phoenix6::hardware::TalonFX m_BL_Steer{DrivetrainConstants::kBLSteerId};
   ctre::phoenix6::hardware::TalonFX m_BR_Steer{11};
 
   // CANcoders unwired and disabled (Tank Drive only on swerve wheels)
