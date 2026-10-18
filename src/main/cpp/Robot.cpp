@@ -601,6 +601,45 @@ void Robot::UpdateDiagnostics() {
   frc::SmartDashboard::PutString("Diagnostics/Drive_Mode", FieldCentric ? "FieldCentric" : "RobotCentric");
   frc::SmartDashboard::PutString("Diagnostics/Active_Modules", "FL (30), FR (20), BL (40), BR (10)");
   frc::SmartDashboard::PutString("Diagnostics/FL_Status", "Active (Swerve 3 Connected)");
+
+  // ==================== Alert Updates (Reflect & Driver Station) ====================
+  // Battery Alerts
+  double batteryVolts = frc::RobotController::GetBatteryVoltage().value();
+  m_alertBatteryCritical.Set(batteryVolts > 0.0 && batteryVolts < 10.5);
+  m_alertBatteryLow.Set(batteryVolts >= 10.5 && batteryVolts < 12.0);
+
+  // Hardware Connection Errors
+  bool pigeonConnected = m_pigeon.IsConnected();
+  m_alertPigeonDisconnected.Set(!pigeonConnected);
+  m_alertCANcoderFL.Set(!m_swerve.IsCANcoderFLConnected());
+  m_alertCANcoderFR.Set(!m_swerve.CANcoderFR.IsConnected());
+  m_alertCANcoderBL.Set(!m_swerve.CANcoderBL.IsConnected());
+  m_alertCANcoderBR.Set(!m_swerve.CANcoderBR.IsConnected());
+
+  // Operational Warnings
+  bool autoEnabled = frc::SmartDashboard::GetBoolean("Auto/EnableAutoRoutine", true);
+  m_alertAutoDisabled.Set(!autoEnabled);
+
+  bool reverseDrive = frc::SmartDashboard::GetBoolean("Drive/ReverseDirection", false);
+  m_alertDriveReversed.Set(reverseDrive);
+
+  bool revTop = frc::SmartDashboard::GetBoolean("Diagnostics/ReverseTopFeeder", false);
+  bool revBottom = frc::SmartDashboard::GetBoolean("Diagnostics/ReverseBottomFeeder", false);
+  bool revOuttake = frc::SmartDashboard::GetBoolean("Diagnostics/ReverseOuttake", false);
+  m_alertTopFeederReversed.Set(revTop);
+  m_alertBottomFeederReversed.Set(revBottom);
+  m_alertOuttakeReversed.Set(revOuttake);
+
+  bool manualRunTop = frc::SmartDashboard::GetBoolean("Diagnostics/ManualRunTopFeeder", false);
+  bool manualRunBottom = frc::SmartDashboard::GetBoolean("Diagnostics/ManualRunBottomFeeder", false);
+  bool manualRunOuttake = frc::SmartDashboard::GetBoolean("Diagnostics/ManualRunOuttake", false);
+  m_alertManualTestingActive.Set(manualRunTop || manualRunBottom || manualRunOuttake);
+
+  // Status Infos
+  m_alertFieldCentricActive.Set(FieldCentric);
+  m_alertRobotCentricActive.Set(!FieldCentric);
+  m_alertSwerveAligned.Set(m_swerve.AreWheelsAligned());
+  m_alertFMSConnected.Set(frc::DriverStation::IsFMSAttached());
 }
 
 #ifndef RUNNING_FRC_TESTS

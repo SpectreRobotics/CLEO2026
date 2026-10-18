@@ -298,13 +298,30 @@ void Drivetrain::DisabledPeriodic() {
   frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_DutyCycle", m_FL_Steer.GetDutyCycle().GetValueAsDouble());
 
   // Wheel straight alignment indicator (|angle| < 3 degrees)
-  bool wheelsStraight = (std::abs(curFLDeg) < 3.0) &&
-                        (std::abs(curFRDeg) < 3.0) &&
-                        (std::abs(curBLDeg) < 3.0) &&
-                        (std::abs(curBRDeg) < 3.0);
-  frc::SmartDashboard::PutBoolean("Swerve/All_Wheels_Straight", wheelsStraight);
+  m_wheelsAligned = (std::abs(curFLDeg) < 3.0) &&
+                    (std::abs(curFRDeg) < 3.0) &&
+                    (std::abs(curBLDeg) < 3.0) &&
+                    (std::abs(curBRDeg) < 3.0);
+  frc::SmartDashboard::PutBoolean("Diagnostics/WheelsAligned", m_wheelsAligned);
 
-  // Swerve module state arrays formatted for Reflect / AdvantageScope / Shuffleboard
+  // Swerve module state struct arrays for Reflect / AdvantageScope
+  frc::SwerveModuleState measuredStatesStruct[4] = {
+      {0_mps, frc::Rotation2d{units::turn_t{-curFLTurns}}},
+      {0_mps, frc::Rotation2d{units::turn_t{-curFRTurns}}},
+      {0_mps, frc::Rotation2d{units::turn_t{-curBLTurns}}},
+      {0_mps, frc::Rotation2d{units::turn_t{-curBRTurns}}}
+  };
+  frc::SwerveModuleState desiredStatesStruct[4] = {
+      {0_mps, frc::Rotation2d{units::turn_t{-curFLTurns}}},
+      {0_mps, frc::Rotation2d{units::turn_t{-curFRTurns}}},
+      {0_mps, frc::Rotation2d{units::turn_t{-curBLTurns}}},
+      {0_mps, frc::Rotation2d{units::turn_t{-curBRTurns}}}
+  };
+  m_measuredStatesPub.Set(measuredStatesStruct);
+  m_moduleStatesPub.Set(measuredStatesStruct);
+  m_desiredStatesPub.Set(desiredStatesStruct);
+
+  // Swerve module state double arrays formatted for legacy dashboards / Shuffleboard
   std::vector<double> measuredStates = {
       curFLTurns * (2.0 * M_PI), 0.0,
       curFRTurns * (2.0 * M_PI), 0.0,
@@ -395,6 +412,32 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     m_FR_Steer.Set(0.0);
     m_BL_Steer.Set(0.0);
     m_BR_Steer.Set(0.0);
+
+    const double curRawFL = m_FL_Steer.GetPosition().GetValueAsDouble();
+    const double curRawFR = m_FR_Steer.GetPosition().GetValueAsDouble();
+    const double curRawBL = m_BL_Steer.GetPosition().GetValueAsDouble();
+    const double curRawBR = m_BR_Steer.GetPosition().GetValueAsDouble();
+
+    const double curZeroedFL = std::remainder(curRawFL - kSwerve3FLZeroTurns, 1.0);
+    const double curZeroedFR = std::remainder(curRawFR - kSwerve2FRZeroTurns, 1.0);
+    const double curZeroedBL = std::remainder(curRawBL - kSwerve4BLZeroTurns, 1.0);
+    const double curZeroedBR = std::remainder(curRawBR - kSwerve1BRZeroTurns, 1.0);
+
+    frc::SwerveModuleState measuredStatesStruct[4] = {
+        {0_mps, frc::Rotation2d{units::turn_t{-curZeroedFL}}},
+        {0_mps, frc::Rotation2d{units::turn_t{-curZeroedFR}}},
+        {0_mps, frc::Rotation2d{units::turn_t{-curZeroedBL}}},
+        {0_mps, frc::Rotation2d{units::turn_t{-curZeroedBR}}}
+    };
+    frc::SwerveModuleState desiredStatesStruct[4] = {
+        {0_mps, frc::Rotation2d{units::turn_t{-curZeroedFL}}},
+        {0_mps, frc::Rotation2d{units::turn_t{-curZeroedFR}}},
+        {0_mps, frc::Rotation2d{units::turn_t{-curZeroedBL}}},
+        {0_mps, frc::Rotation2d{units::turn_t{-curZeroedBR}}}
+    };
+    m_measuredStatesPub.Set(measuredStatesStruct);
+    m_moduleStatesPub.Set(measuredStatesStruct);
+    m_desiredStatesPub.Set(desiredStatesStruct);
     return;
   }
 
@@ -712,7 +755,24 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
 
   odometryUpdate(FL_pos, FR_pos, BL_pos, BR_pos, wheelSpeedFL, wheelSpeedFR, wheelSpeedBL, wheelSpeedBR, GyroValue);
 
-  // Swerve module state arrays formatted for Reflect / AdvantageScope / Shuffleboard
+  // Swerve module state struct arrays for Reflect / AdvantageScope
+  frc::SwerveModuleState measuredStatesStruct[4] = {
+      {units::meters_per_second_t{wheelSpeedFL}, frc::Rotation2d{units::turn_t{-curZeroedFL}}},
+      {units::meters_per_second_t{wheelSpeedFR}, frc::Rotation2d{units::turn_t{-curZeroedFR}}},
+      {units::meters_per_second_t{wheelSpeedBL}, frc::Rotation2d{units::turn_t{-curZeroedBL}}},
+      {units::meters_per_second_t{wheelSpeedBR}, frc::Rotation2d{units::turn_t{-curZeroedBR}}}
+  };
+  frc::SwerveModuleState desiredStatesStruct[4] = {
+      {units::meters_per_second_t{speedFL * 4.0}, frc::Rotation2d{units::turn_t{-targetTurnsFL}}},
+      {units::meters_per_second_t{speedFR * 4.0}, frc::Rotation2d{units::turn_t{-targetTurnsFR}}},
+      {units::meters_per_second_t{speedBL * 4.0}, frc::Rotation2d{units::turn_t{-targetTurnsBL}}},
+      {units::meters_per_second_t{speedBR * 4.0}, frc::Rotation2d{units::turn_t{-targetTurnsBR}}}
+  };
+  m_measuredStatesPub.Set(measuredStatesStruct);
+  m_moduleStatesPub.Set(measuredStatesStruct);
+  m_desiredStatesPub.Set(desiredStatesStruct);
+
+  // Swerve module state double arrays formatted for legacy dashboards / Shuffleboard
   std::vector<double> measuredStates = {
       FL_pos, wheelSpeedFL,
       FR_pos, wheelSpeedFR,

@@ -16,6 +16,9 @@
 #include <frc/geometry/Rotation2d.h>
 #include <frc/Timer.h>
 #include <frc/DriverStation.h>
+#include <frc/kinematics/SwerveModuleState.h>
+#include <networktables/NetworkTableInstance.h>
+#include <networktables/StructArrayTopic.h>
 #include <units/length.h>
 #include <units/time.h>
 
@@ -53,6 +56,7 @@ class Drivetrain {
   void TestRotateModules(double speed);
   double GetCANcoderFLTurns();
   bool IsCANcoderFLConnected();
+  bool AreWheelsAligned() const { return m_wheelsAligned; }
 
   void ResetHeading(double heading = 0.0) {
     targetAngle = heading;
@@ -109,6 +113,20 @@ class Drivetrain {
   ctre::phoenix6::hardware::CANcoder CANcoderBL{42, ctre::phoenix6::CANBus{"rio"}};
   ctre::phoenix6::hardware::CANcoder CANcoderBR{12, ctre::phoenix6::CANBus{"rio"}};
 
+  // Reflect & WPILib NT4 SwerveModuleState Struct Array Publishers
+  nt::StructArrayPublisher<frc::SwerveModuleState> m_measuredStatesPub =
+      nt::NetworkTableInstance::GetDefault()
+          .GetStructArrayTopic<frc::SwerveModuleState>("/SmartDashboard/Swerve/MeasuredStates")
+          .Publish();
+  nt::StructArrayPublisher<frc::SwerveModuleState> m_moduleStatesPub =
+      nt::NetworkTableInstance::GetDefault()
+          .GetStructArrayTopic<frc::SwerveModuleState>("/SmartDashboard/Swerve/ModuleStates")
+          .Publish();
+  nt::StructArrayPublisher<frc::SwerveModuleState> m_desiredStatesPub =
+      nt::NetworkTableInstance::GetDefault()
+          .GetStructArrayTopic<frc::SwerveModuleState>("/SmartDashboard/Swerve/DesiredStates")
+          .Publish();
+
  private:
   void SyncSmartDashboardPID();
 
@@ -151,6 +169,7 @@ class Drivetrain {
   units::time::second_t lastTime = units::time::second_t(0);
   double lastError = 0;
   double iError = 0;
+  bool m_wheelsAligned = false;
 
   double ROT = 0;
   double targetAngle = 0;

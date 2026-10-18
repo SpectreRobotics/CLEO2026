@@ -12,6 +12,7 @@
 #include <frc/smartdashboard/SmartDashboard.h>
 #include <frc/smartdashboard/SendableChooser.h>
 #include <frc/geometry/Pose2d.h>
+#include <frc/Alert.h>
 
 #include <ctre/phoenix6/Pigeon2.hpp>
 #include <ctre/phoenix6/TalonFX.hpp>
@@ -118,4 +119,28 @@ class Robot : public frc::TimedRobot {
   //                                                  ctre::phoenix6::CANBus{DrivetrainConstants::kIntakeCanBus}};
 
   int GetDriverPort() const;
+
+  // ========== Alerts (Reflect & DriverStation compatible) ==========
+  // Errors (Red X)
+  frc::Alert m_alertBatteryCritical{"Critical Battery Voltage (< 10.5V)! Replace battery immediately!", frc::Alert::AlertType::kError};
+  frc::Alert m_alertPigeonDisconnected{"Pigeon 2 Gyro Disconnected! Field-Centric drive disabled.", frc::Alert::AlertType::kError};
+  frc::Alert m_alertCANcoderFL{"CANcoder FL (CAN 32) Disconnected!", frc::Alert::AlertType::kError};
+  frc::Alert m_alertCANcoderFR{"CANcoder FR (CAN 22) Disconnected!", frc::Alert::AlertType::kError};
+  frc::Alert m_alertCANcoderBL{"CANcoder BL (CAN 42) Disconnected!", frc::Alert::AlertType::kError};
+  frc::Alert m_alertCANcoderBR{"CANcoder BR (CAN 12) Disconnected!", frc::Alert::AlertType::kError};
+
+  // Warnings (Yellow !)
+  frc::Alert m_alertBatteryLow{"Low Battery Voltage (< 12.0V) - Consider replacing soon.", frc::Alert::AlertType::kWarning};
+  frc::Alert m_alertAutoDisabled{"Autonomous routine DISABLED by dashboard toggle!", frc::Alert::AlertType::kWarning};
+  frc::Alert m_alertDriveReversed{"Robot Drive Direction is REVERSED (180 deg)!", frc::Alert::AlertType::kWarning};
+  frc::Alert m_alertTopFeederReversed{"Top Feeder is set to REVERSE!", frc::Alert::AlertType::kWarning};
+  frc::Alert m_alertBottomFeederReversed{"Bottom Feeder is set to REVERSE!", frc::Alert::AlertType::kWarning};
+  frc::Alert m_alertOuttakeReversed{"Outtake is set to REVERSE!", frc::Alert::AlertType::kWarning};
+  frc::Alert m_alertManualTestingActive{"Manual mechanism test mode is ACTIVE!", frc::Alert::AlertType::kWarning};
+
+  // Infos (Green i)
+  frc::Alert m_alertFieldCentricActive{"Drive Mode: Field-Centric", frc::Alert::AlertType::kInfo};
+  frc::Alert m_alertRobotCentricActive{"Drive Mode: Robot-Centric", frc::Alert::AlertType::kInfo};
+  frc::Alert m_alertSwerveAligned{"Swerve modules aligned straight (0 deg)", frc::Alert::AlertType::kInfo};
+  frc::Alert m_alertFMSConnected{"Connected to FMS (Field Management System)", frc::Alert::AlertType::kInfo};
 };
