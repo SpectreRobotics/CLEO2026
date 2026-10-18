@@ -370,7 +370,8 @@ void Drivetrain::TestRotateModules(double speed) {
 }
 
 void Drivetrain::Update(double x, double y, double x2, double GyroValue,
-                        double triggerL, double triggerR, bool FieldCentric) {
+                        double triggerL, double triggerR, bool FieldCentric,
+                        bool isTankDrive, bool holdSteer) {
   SyncSmartDashboardPID();
   const double deadbandTurns = frc::SmartDashboard::GetNumber("Swerve/Steer_DeadbandTurns", DC::kSteerDeadbandTurns);
 
@@ -420,9 +421,12 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   double BL_pos = curZeroedBL * (2.0 * M_PI);
   double BR_pos = curZeroedBR * (2.0 * M_PI);
 
-  double STR = x;
-  double FWD = y;
+  double targetTurnsFL = 0.0;
+  double targetTurnsFR = 0.0;
+  double targetTurnsBL = 0.0;
+  double targetTurnsBR = 0.0;
 
+<<<<<<< HEAD
   // ChimiSwerve Section 2.1b (Pages 11-13): Field-Centric Transformation
   //   FWD_new = FWD * cos(theta) + STR * sin(theta)
   //   STR_new = STR * cos(theta) - FWD * sin(theta)
@@ -508,6 +512,75 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   if (m_flipBL) speedBL = -speedBL;
   if (m_flipBR) speedBR = -speedBR;
 
+=======
+  if (isTankDrive) {
+    // ========== TANK DRIVE MODE ==========
+    // All 4 steer modules are steered straight forward (0 degrees = 0 turns)
+    targetTurnsFL = 0.0;
+    targetTurnsFR = 0.0;
+    targetTurnsBL = 0.0;
+    targetTurnsBR = 0.0;
+
+    double throttle = y;
+    // Turn from right stick X (x2) or left stick X (x) if right stick centered
+    double turn = (std::abs(x2) > 0.05) ? x2 : x;
+    auto [leftSpeed, rightSpeed] = TankDriveKinematics(throttle, turn);
+
+    speedFL = leftSpeed;
+    speedBL = leftSpeed;
+    speedFR = rightSpeed;
+    speedBR = rightSpeed;
+
+    frc::SmartDashboard::PutNumber("Tank/LeftSpeed", leftSpeed);
+    frc::SmartDashboard::PutNumber("Tank/RightSpeed", rightSpeed);
+  } else {
+    // ========== SWERVE DRIVE MODE ==========
+    double STR = x;
+    double FWD = y;
+
+    // Field Centric // offsetting vectors by the gyro angle
+    if (FieldCentric == true) {
+      double temp = FWD * std::cos(GyroValue * M_PI / 180.0) + STR * std::sin(GyroValue * M_PI / 180.0);
+      STR = -FWD * std::sin(GyroValue * M_PI / 180.0) + STR * std::cos(GyroValue * M_PI / 180.0);
+      FWD = temp;
+    }
+
+    if (std::abs(ROT) < 0.05) {
+      // Pure translation: all 4 modules mirror each other identically
+      double unifiedAngle = std::atan2(STR, FWD);
+      double unifiedSpeed = std::min(1.0, std::hypot(STR, FWD));
+
+      angleFL = unifiedAngle;
+      angleFR = unifiedAngle;
+      angleBL = unifiedAngle;
+      angleBR = unifiedAngle;
+
+      speedFL = unifiedSpeed;
+      speedFR = unifiedSpeed;
+      speedBL = unifiedSpeed;
+      speedBR = unifiedSpeed;
+    } else {
+      // Swerve Inverse Kinematics (forward/backward, strafe, diagonals, and rotation):
+      const ModuleStates states = InverseKinematics(FWD, STR, ROT);
+
+      angleFL = states.waFL;
+      angleFR = states.waFR;
+      angleBL = states.waBL;
+      angleBR = states.waBR;
+
+      speedFL = states.wsFL;
+      speedFR = states.wsFR;
+      speedBL = states.wsBL;
+      speedBR = states.wsBR;
+    }
+
+    targetTurnsFL = angleFL / (2.0 * M_PI);
+    targetTurnsFR = angleFR / (2.0 * M_PI);
+    targetTurnsBL = angleBL / (2.0 * M_PI);
+    targetTurnsBR = angleBR / (2.0 * M_PI);
+  }
+
+>>>>>>> 5cdf21f995665ba9776b6c4f8cfef68769ba83c0
   ctre::phoenix6::controls::PositionDutyCycle steerm_speedFL{0_tr};
   ctre::phoenix6::controls::PositionDutyCycle steerm_speedFR{0_tr};
   ctre::phoenix6::controls::PositionDutyCycle steerm_speedBL{0_tr};
@@ -637,6 +710,7 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   if (std::abs(errBR) > startBand) m_steerActiveBR = true;
   else if (std::abs(errBR) <= stopBand) m_steerActiveBR = false;
 
+<<<<<<< HEAD
   if (deadbandTurns <= 0.0 || m_steerActiveFL) {
     m_FL_Steer.SetControl(steerm_speedFL.WithPosition(units::angle::turn_t{kSwerve3FLZeroTurns + m_contTargetFL}));
   } else {
@@ -677,7 +751,37 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   if (deadbandTurns <= 0.0 || m_steerActiveBR) {
     m_BR_Steer.SetControl(steerm_speedBR.WithPosition(units::angle::turn_t{kSwerve1BRZeroTurns + m_contTargetBR}));
   } else {
+=======
+  if (isTankDrive && !holdSteer) {
+    m_FL_Steer.Set(0.0);
+    m_FR_Steer.Set(0.0);
+    m_BL_Steer.Set(0.0);
+>>>>>>> 5cdf21f995665ba9776b6c4f8cfef68769ba83c0
     m_BR_Steer.Set(0.0);
+  } else {
+    if (deadbandTurns <= 0.0 || m_steerActiveFL) {
+      m_FL_Steer.SetControl(steerm_speedFL.WithPosition(units::angle::turn_t{curRawFL + errFL}));
+    } else {
+      m_FL_Steer.Set(0.0);
+    }
+
+    if (deadbandTurns <= 0.0 || m_steerActiveFR) {
+      m_FR_Steer.SetControl(steerm_speedFR.WithPosition(units::angle::turn_t{curRawFR + errFR}));
+    } else {
+      m_FR_Steer.Set(0.0);
+    }
+
+    if (deadbandTurns <= 0.0 || m_steerActiveBL) {
+      m_BL_Steer.SetControl(steerm_speedBL.WithPosition(units::angle::turn_t{curRawBL + errBL}));
+    } else {
+      m_BL_Steer.Set(0.0);
+    }
+
+    if (deadbandTurns <= 0.0 || m_steerActiveBR) {
+      m_BR_Steer.SetControl(steerm_speedBR.WithPosition(units::angle::turn_t{curRawBR + errBR}));
+    } else {
+      m_BR_Steer.Set(0.0);
+    }
   }
 
   // Synchronize drive output with module steering alignment so drive wheels do not
@@ -877,4 +981,15 @@ void Drivetrain::UpdateSim(units::time::second_t dt) {
   CANcoderFR.GetSimState().SetRawPosition(units::turn_t{tFR});
   CANcoderBL.GetSimState().SetRawPosition(units::turn_t{tBL});
   CANcoderBR.GetSimState().SetRawPosition(units::turn_t{tBR});
+}
+
+std::pair<double, double> Drivetrain::TankDriveKinematics(double throttle, double turn) {
+  double left = throttle + turn;
+  double right = throttle - turn;
+  double maxMag = std::max(std::abs(left), std::abs(right));
+  if (maxMag > 1.0) {
+    left /= maxMag;
+    right /= maxMag;
+  }
+  return {left, right};
 }

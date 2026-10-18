@@ -23,6 +23,7 @@ Robot::Robot() {
   m_chooser.AddOption(kAutoDoNothing, kAutoDoNothing);
   frc::SmartDashboard::PutData("Auto Modes", &m_chooser);
 
+<<<<<<< HEAD
   // Auto shooting tunables & enable toggle (Reflect compatible)
   frc::SmartDashboard::PutBoolean("Auto/EnableAutoRoutine", true);
   frc::SmartDashboard::PutBoolean("Auto/IsAutoEnabled", true);
@@ -49,8 +50,15 @@ Robot::Robot() {
 
   // Drive mode chooser - defaults to RobotCentric
   m_driveModeChooser.SetDefaultOption("RobotCentric", "RobotCentric");
+=======
+  // Drive mode chooser - defaults to TankDrive for immediate, spin-free driving
+  m_driveModeChooser.SetDefaultOption("TankDrive", "TankDrive");
+  m_driveModeChooser.AddOption("RobotCentric", "RobotCentric");
+>>>>>>> 5cdf21f995665ba9776b6c4f8cfef68769ba83c0
   m_driveModeChooser.AddOption("FieldCentric", "FieldCentric");
   frc::SmartDashboard::PutData("Drive Mode", &m_driveModeChooser);
+  frc::SmartDashboard::PutBoolean("Drive/TankDrive", true);
+  frc::SmartDashboard::PutBoolean("Drive/Tank_HoldWheelsStraight", true);
   frc::SmartDashboard::PutBoolean("Drive/FieldCentric", false);
   frc::SmartDashboard::PutBoolean("Drive/IsFieldCentric", false);
 
@@ -121,8 +129,21 @@ void Robot::RobotPeriodic() {
   frc::SmartDashboard::PutBoolean("Gyro/Connected", m_pigeon.IsConnected());
   frc::SmartDashboard::PutString("Controller/ActiveType", "PS5 DualSense");
 
+<<<<<<< HEAD
   UpdateServoTelemetry();
   UpdateDiagnostics();
+=======
+  // Diagnostics panel
+  bool wantTankFromChooser = (m_driveModeChooser.GetSelected() == "TankDrive");
+  bool wantTankFromToggle = frc::SmartDashboard::GetBoolean("Drive/TankDrive", true);
+  m_isTankDrive = wantTankFromChooser || wantTankFromToggle;
+
+  std::string currentDriveMode = m_isTankDrive ? "TankDrive" : (FieldCentric ? "FieldCentric" : "RobotCentric");
+  frc::SmartDashboard::PutString("Diagnostics/Drive_Mode", currentDriveMode);
+  frc::SmartDashboard::PutBoolean("Drive/IsTankDrive", m_isTankDrive);
+  frc::SmartDashboard::PutString("Diagnostics/Active_Modules", "FL (30), FR (20), BL (40), BR (10)");
+  frc::SmartDashboard::PutString("Diagnostics/FL_Status", "Active (Swerve 3 Connected)");
+>>>>>>> 5cdf21f995665ba9776b6c4f8cfef68769ba83c0
 }
 
 void Robot::AutonomousInit() {
@@ -271,6 +292,7 @@ void Robot::TeleopPeriodic() {
   }
   frc::SmartDashboard::PutBoolean("Drive/IsReversed", reverseForward);
 
+<<<<<<< HEAD
   // Drive mode (ChimiSwerve Sec 2.1a & Sec 3.7):
   // Can be toggled via SmartDashboard "Drive Mode" chooser or "Drive/FieldCentric" checkbox.
   // Automatically falls back to RobotCentric if Pigeon2 gyro is disconnected.
@@ -288,8 +310,25 @@ void Robot::TeleopPeriodic() {
 
   const bool gyroConnected = m_pigeon.IsConnected();
   FieldCentric = m_wantFieldCentric && gyroConnected;
+=======
+  // Driver controller R1 bumper toggles TankDrive mode live
+  bool dashTank = frc::SmartDashboard::GetBoolean("Drive/TankDrive", true);
+  bool chooserTank = (m_driveModeChooser.GetSelected() == "TankDrive");
+  if (GetDriverRightBumperPressed()) {
+    dashTank = !dashTank;
+    frc::SmartDashboard::PutBoolean("Drive/TankDrive", dashTank);
+  }
+  m_isTankDrive = dashTank || chooserTank;
+
+  // Drive mode: default is RobotCentric; only FieldCentric when explicitly selected, gyro connected, and not in TankDrive
+  bool wantFieldFromChooser = (m_driveModeChooser.GetSelected() == "FieldCentric");
+  bool wantFieldFromToggle = frc::SmartDashboard::GetBoolean("Drive/FieldCentric", false);
+  FieldCentric = !m_isTankDrive && (wantFieldFromChooser || wantFieldFromToggle) && m_pigeon.IsConnected();
+>>>>>>> 5cdf21f995665ba9776b6c4f8cfef68769ba83c0
   frc::SmartDashboard::PutBoolean("Drive/IsFieldCentric", FieldCentric);
   frc::SmartDashboard::PutBoolean("Gyro/FaultFallbackToRobotCentric", m_wantFieldCentric && !gyroConnected);
+
+  bool holdSteer = frc::SmartDashboard::GetBoolean("Drive/Tank_HoldWheelsStraight", true);
 
   // Telemetry for verifying driver inputs live on SmartDashboard
   int activePort = GetDriverPort();
@@ -304,7 +343,7 @@ void Robot::TeleopPeriodic() {
   frc::SmartDashboard::PutNumber("Driver/Cmd_STR", x);
   frc::SmartDashboard::PutNumber("Driver/Cmd_ROT", x2);
 
-  m_swerve.Update(x, y, x2, GyroValue, triggerL, triggerR, FieldCentric);
+  m_swerve.Update(x, y, x2, GyroValue, triggerL, triggerR, FieldCentric, m_isTankDrive, holdSteer);
 
   // ========== Top Half Mechanism Controls (Controller Bumper or Dashboard Overrides) ==========
   bool topHalfBumper = GetDriverRightBumper();
@@ -448,6 +487,12 @@ double Robot::GetDriverRightX() const {
   int port = GetDriverPort();
   if (port == 1) return m_ps5Controller1.GetRightX();
   return m_ps5Controller0.GetRightX();
+}
+
+double Robot::GetDriverRightY() const {
+  int port = GetDriverPort();
+  if (port == 1) return m_ps5Controller1.GetRightY();
+  return m_ps5Controller0.GetRightY();
 }
 
 double Robot::GetDriverLeftTrigger() const {
