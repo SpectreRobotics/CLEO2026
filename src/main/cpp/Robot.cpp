@@ -18,9 +18,15 @@
 #endif
 
 Robot::Robot() {
-  m_chooser.SetDefaultOption(kAutoNameDefault, kAutoNameDefault);
-  m_chooser.AddOption(kAutoNameCustom, kAutoNameCustom);
+  m_chooser.SetDefaultOption(kAutoShootPreload, kAutoShootPreload);
+  m_chooser.AddOption(kAutoDoNothing, kAutoDoNothing);
   frc::SmartDashboard::PutData("Auto Modes", &m_chooser);
+
+  // Auto shooting tunables (defaults match DrivetrainConstants)
+  frc::SmartDashboard::PutNumber("Auto/SpinupSeconds", 1.0);
+  frc::SmartDashboard::PutNumber("Auto/FeedDurationSeconds", 2.0);
+  frc::SmartDashboard::PutNumber("Auto/OuttakeSpeed", DrivetrainConstants::kOuttakeSpeed);
+  frc::SmartDashboard::PutNumber("Auto/FeederSpeed", DrivetrainConstants::kFeederSpeed);
 
   // Drive mode chooser - defaults to RobotCentric
   m_driveModeChooser.SetDefaultOption("RobotCentric", "RobotCentric");
@@ -87,15 +93,89 @@ void Robot::AutonomousInit() {
   wpi::print("Auto selected: {}\n", m_autoSelected);
   m_swerve.ResetHeading(GyroValue);
   m_swerve.ResetOdometry();
+
+  // Reset timer and ensure mechanisms start clean
+  m_timer.Restart();
+  OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
 }
 
 void Robot::AutonomousPeriodic() {
-  // Autonomous routines go here
+  // Hold swerve drivetrain firmly in place (robot is positioned in front of hub)
+  m_swerve.Update(0.0, 0.0, 0.0, GyroValue, 0.0, 0.0, false);
+
+  if (m_autoSelected == kAutoDoNothing) {
+    OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    frc::SmartDashboard::PutString("Auto/State", "Do Nothing");
+    return;
+  }
+
+  // Preload shot routine:
+  // Phase 1 (0 -> SpinupSec): Spin up outtake flywheels to full speed
+  // Phase 2 (SpinupSec -> SpinupSec + FeedSec): Feed preload into flywheels to launch
+  // Phase 3 (After shot): Turn off all motors to save battery and motor life
+  const double t = m_timer.Get().value();
+  frc::SmartDashboard::PutNumber("Auto/Timer_s", t);
+
+  const double spinupSec = frc::SmartDashboard::GetNumber("Auto/SpinupSeconds", 1.0);
+  const double feedDurationSec = frc::SmartDashboard::GetNumber("Auto/FeedDurationSeconds", 2.0);
+  const double outtakeSpeed = frc::SmartDashboard::GetNumber("Auto/OuttakeSpeed", DrivetrainConstants::kOuttakeSpeed);
+  const double feederSpeed = frc::SmartDashboard::GetNumber("Auto/FeederSpeed", DrivetrainConstants::kFeederSpeed);
+
+  if (t < spinupSec) {
+    // Phase 1: Flywheels spin up, feeders hold
+    OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{outtakeSpeed});
+    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{-outtakeSpeed});
+    BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+
+    frc::SmartDashboard::PutString("Auto/State", "Phase 1: Spinup Flywheels");
+    frc::SmartDashboard::PutNumber("Auto/OuttakeLeftDuty", outtakeSpeed);
+    frc::SmartDashboard::PutNumber("Auto/OuttakeRightDuty", -outtakeSpeed);
+    frc::SmartDashboard::PutNumber("Auto/BottomFeederDuty", 0.0);
+    frc::SmartDashboard::PutNumber("Auto/TopFeederDuty", 0.0);
+  } else if (t < (spinupSec + feedDurationSec)) {
+    // Phase 2: Feeders push preload through spinning flywheels
+    OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{outtakeSpeed});
+    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{-outtakeSpeed});
+    BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{feederSpeed});
+    TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{-feederSpeed});
+
+    frc::SmartDashboard::PutString("Auto/State", "Phase 2: Feeding / Launching Preload");
+    frc::SmartDashboard::PutNumber("Auto/OuttakeLeftDuty", outtakeSpeed);
+    frc::SmartDashboard::PutNumber("Auto/OuttakeRightDuty", -outtakeSpeed);
+    frc::SmartDashboard::PutNumber("Auto/BottomFeederDuty", feederSpeed);
+    frc::SmartDashboard::PutNumber("Auto/TopFeederDuty", -feederSpeed);
+  } else {
+    // Phase 3: Shot complete, idle mechanisms
+    OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+
+    frc::SmartDashboard::PutString("Auto/State", "Phase 3: Shot Complete (Idle)");
+    frc::SmartDashboard::PutNumber("Auto/OuttakeLeftDuty", 0.0);
+    frc::SmartDashboard::PutNumber("Auto/OuttakeRightDuty", 0.0);
+    frc::SmartDashboard::PutNumber("Auto/BottomFeederDuty", 0.0);
+    frc::SmartDashboard::PutNumber("Auto/TopFeederDuty", 0.0);
+  }
 }
 
 void Robot::TeleopInit() {
+  m_timer.Stop();
   m_swerve.ConfigureMotors();
   m_swerve.ResetHeading(GyroValue);
+
+  // Stop mechanisms when entering teleop until commanded by driver
+  OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
 }
 
 void Robot::TeleopPeriodic() {
@@ -211,6 +291,8 @@ void Robot::TeleopPeriodic() {
 }
 
 void Robot::DisabledInit() {
+  m_timer.Stop();
+  m_timer.Reset();
   m_swerve.DisabledInit();
   BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
   TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});

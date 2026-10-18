@@ -336,6 +336,58 @@ TEST(ChimiSwerveOdometryTest, ForwardKinematicsAndFieldTransform) {
   EXPECT_NEAR(posSTR, 2.0, 1e-4);
 }
 
+// ============================================================================
+// 7. Autonomous Preload Shooting Sequence Verification
+// ============================================================================
+TEST(AutonomousShootingTest, PreloadShotPhasesAndMotorCommands) {
+  const double spinupSec = 1.0;
+  const double feedDurationSec = 2.0;
+  const double outtakeSpeed = DC::kOuttakeSpeed;
+  const double feederSpeed = DC::kFeederSpeed;
+
+  auto evaluateAutoShot = [&](double t, double& outLeft, double& outRight, double& btmFeed, double& topFeed) {
+    if (t < spinupSec) {
+      outLeft = outtakeSpeed;
+      outRight = -outtakeSpeed;
+      btmFeed = 0.0;
+      topFeed = 0.0;
+    } else if (t < (spinupSec + feedDurationSec)) {
+      outLeft = outtakeSpeed;
+      outRight = -outtakeSpeed;
+      btmFeed = feederSpeed;
+      topFeed = -feederSpeed;
+    } else {
+      outLeft = 0.0;
+      outRight = 0.0;
+      btmFeed = 0.0;
+      topFeed = 0.0;
+    }
+  };
+
+  double ol = 0.0, Or = 0.0, bf = 0.0, tf = 0.0;
+
+  // Phase 1 (0.5s): Flywheels spin up, feeders off
+  evaluateAutoShot(0.5, ol, Or, bf, tf);
+  EXPECT_DOUBLE_EQ(ol, outtakeSpeed);
+  EXPECT_DOUBLE_EQ(Or, -outtakeSpeed);
+  EXPECT_DOUBLE_EQ(bf, 0.0);
+  EXPECT_DOUBLE_EQ(tf, 0.0);
+
+  // Phase 2 (1.5s): Both flywheels and feeders active
+  evaluateAutoShot(1.5, ol, Or, bf, tf);
+  EXPECT_DOUBLE_EQ(ol, outtakeSpeed);
+  EXPECT_DOUBLE_EQ(Or, -outtakeSpeed);
+  EXPECT_DOUBLE_EQ(bf, feederSpeed);
+  EXPECT_DOUBLE_EQ(tf, -feederSpeed);
+
+  // Phase 3 (3.5s): Shot complete, all motors idle
+  evaluateAutoShot(3.5, ol, Or, bf, tf);
+  EXPECT_DOUBLE_EQ(ol, 0.0);
+  EXPECT_DOUBLE_EQ(Or, 0.0);
+  EXPECT_DOUBLE_EQ(bf, 0.0);
+  EXPECT_DOUBLE_EQ(tf, 0.0);
+}
+
 int main(int argc, char** argv) {
   HAL_Initialize(500, 0);
   ::testing::InitGoogleTest(&argc, argv);

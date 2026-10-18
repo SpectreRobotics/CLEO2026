@@ -55,8 +55,8 @@ class Robot : public frc::TimedRobot {
 
  private:
   frc::SendableChooser<std::string> m_chooser;
-  const std::string kAutoNameDefault = "Default";
-  const std::string kAutoNameCustom = "My Auto";
+  const std::string kAutoShootPreload = "Shoot Preload (Stationary)";
+  const std::string kAutoDoNothing = "Do Nothing";
   std::string m_autoSelected;
 
   // ========== Driver Controllers (PS5 DualSense - Port 0/1) ==========
