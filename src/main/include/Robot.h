@@ -17,7 +17,6 @@
 #include <ctre/phoenix6/Pigeon2.hpp>
 #include <ctre/phoenix6/TalonFX.hpp>
 #include <ctre/phoenix6/CANcoder.hpp>
-#include <ctre/phoenix6/controls/DutyCycleOut.hpp>
 #include <rev/ServoHub.h>
 #include <rev/ServoChannel.h>
 
@@ -43,6 +42,7 @@ class Robot : public frc::TimedRobot {
   double GetDriverLeftX() const;
   double GetDriverLeftY() const;
   double GetDriverRightX() const;
+  double GetDriverRightY() const;
   double GetDriverLeftTrigger() const;
   double GetDriverRightTrigger() const;
   bool GetDriverRightBumper() const;
@@ -87,18 +87,15 @@ class Robot : public frc::TimedRobot {
   double triggerL = 0.0;
   double triggerR = 0.0;
   bool FieldCentric = false;
-  bool m_wantFieldCentric = false;
-  bool m_lastChooserField = false;
-  bool m_lastToggleField = false;
 
   frc::SendableChooser<std::string> m_driveModeChooser;
   frc::SendableChooser<std::string> m_orientationChooser;
 
-  // ========== REV Servo Hub (CAN ID 62 on "rio" bus) ==========
-  // Two servos defined on channels 2 and 3
-  rev::servohub::ServoHub m_servoHub{DrivetrainConstants::kServoHubId};
-  rev::servohub::ServoChannel& m_servoChannel2 = m_servoHub.GetServoChannel(rev::servohub::ServoChannel::ChannelId::kChannelId2);
-  rev::servohub::ServoChannel& m_servoChannel3 = m_servoHub.GetServoChannel(rev::servohub::ServoChannel::ChannelId::kChannelId3);
+  // ========== REV Servo Hub (CAN ID 62 on "rio" bus - Commented out) ==========
+  // // Two servos defined on channels 2 and 3
+  // rev::servohub::ServoHub m_servoHub{DrivetrainConstants::kServoHubId};
+  // rev::servohub::ServoChannel& m_servoChannel2 = m_servoHub.GetServoChannel(rev::servohub::ServoChannel::ChannelId::kChannelId2);
+  // rev::servohub::ServoChannel& m_servoChannel3 = m_servoHub.GetServoChannel(rev::servohub::ServoChannel::ChannelId::kChannelId3);
 
   // ========== Top Half Mechanism Motors ("Tophalf" CAN bus) ==========
   ctre::phoenix6::hardware::TalonFX BottomFeederMotor{DrivetrainConstants::kBottomFeederMotorId,
