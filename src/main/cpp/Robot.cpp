@@ -23,7 +23,6 @@ Robot::Robot() {
   m_chooser.AddOption(kAutoDoNothing, kAutoDoNothing);
   frc::SmartDashboard::PutData("Auto Modes", &m_chooser);
 
-<<<<<<< HEAD
   // Auto shooting tunables & enable toggle (Reflect compatible)
   frc::SmartDashboard::PutBoolean("Auto/EnableAutoRoutine", true);
   frc::SmartDashboard::PutBoolean("Auto/IsAutoEnabled", true);
@@ -34,6 +33,7 @@ Robot::Robot() {
   frc::SmartDashboard::PutString("Auto/State", "Ready");
 
   // Top half speeds & manual / reversal controls
+  frc::SmartDashboard::PutBoolean("TopHalf/Enabled", false);
   frc::SmartDashboard::PutNumber("TopHalf/OuttakeSpeed", DrivetrainConstants::kOuttakeSpeed);
   frc::SmartDashboard::PutNumber("TopHalf/FeederSpeed", DrivetrainConstants::kFeederSpeed);
   frc::SmartDashboard::PutBoolean("Diagnostics/ReverseTopFeeder", false);
@@ -48,13 +48,9 @@ Robot::Robot() {
   frc::SmartDashboard::PutBoolean("Diagnostics/ZeroSwerveModules", false);
   frc::SmartDashboard::PutBoolean("Diagnostics/RotateSwerveModules", false);
 
-  // Drive mode chooser - defaults to RobotCentric
-  m_driveModeChooser.SetDefaultOption("RobotCentric", "RobotCentric");
-=======
   // Drive mode chooser - defaults to TankDrive for immediate, spin-free driving
   m_driveModeChooser.SetDefaultOption("TankDrive", "TankDrive");
   m_driveModeChooser.AddOption("RobotCentric", "RobotCentric");
->>>>>>> 5cdf21f995665ba9776b6c4f8cfef68769ba83c0
   m_driveModeChooser.AddOption("FieldCentric", "FieldCentric");
   frc::SmartDashboard::PutData("Drive Mode", &m_driveModeChooser);
   frc::SmartDashboard::PutBoolean("Drive/TankDrive", true);
@@ -76,11 +72,11 @@ Robot::Robot() {
   frc::SmartDashboard::PutBoolean("Reset Odometry", false);
   frc::SmartDashboard::PutBoolean("Drive/ResetOdometry", false);
 
-  // REV Servo Hub channels 2 & 3 setup
-  m_servoChannel2.SetPowered(true);
-  m_servoChannel2.SetEnabled(true);
-  m_servoChannel3.SetPowered(true);
-  m_servoChannel3.SetEnabled(true);
+  // REV Servo Hub channels 2 & 3 setup (Commented out)
+  // m_servoChannel2.SetPowered(true);
+  // m_servoChannel2.SetEnabled(true);
+  // m_servoChannel3.SetPowered(true);
+  // m_servoChannel3.SetEnabled(true);
   frc::SmartDashboard::PutNumber("Servo/Channel2_CmdPulseWidth", 1500);
   frc::SmartDashboard::PutNumber("Servo/Channel3_CmdPulseWidth", 1500);
   frc::SmartDashboard::PutNumber("Servo/Channel2_Angle_Deg", 90.0);
@@ -129,21 +125,22 @@ void Robot::RobotPeriodic() {
   frc::SmartDashboard::PutBoolean("Gyro/Connected", m_pigeon.IsConnected());
   frc::SmartDashboard::PutString("Controller/ActiveType", "PS5 DualSense");
 
-<<<<<<< HEAD
-  UpdateServoTelemetry();
-  UpdateDiagnostics();
-=======
-  // Diagnostics panel
+  // Tank drive and top half status
   bool wantTankFromChooser = (m_driveModeChooser.GetSelected() == "TankDrive");
   bool wantTankFromToggle = frc::SmartDashboard::GetBoolean("Drive/TankDrive", true);
   m_isTankDrive = wantTankFromChooser || wantTankFromToggle;
 
+  m_topHalfEnabled = frc::SmartDashboard::GetBoolean("TopHalf/Enabled", false);
+
   std::string currentDriveMode = m_isTankDrive ? "TankDrive" : (FieldCentric ? "FieldCentric" : "RobotCentric");
   frc::SmartDashboard::PutString("Diagnostics/Drive_Mode", currentDriveMode);
   frc::SmartDashboard::PutBoolean("Drive/IsTankDrive", m_isTankDrive);
+  frc::SmartDashboard::PutBoolean("TopHalf/IsEnabled", m_topHalfEnabled);
   frc::SmartDashboard::PutString("Diagnostics/Active_Modules", "FL (30), FR (20), BL (40), BR (10)");
   frc::SmartDashboard::PutString("Diagnostics/FL_Status", "Active (Swerve 3 Connected)");
->>>>>>> 5cdf21f995665ba9776b6c4f8cfef68769ba83c0
+
+  UpdateServoTelemetry();
+  UpdateDiagnostics();
 }
 
 void Robot::AutonomousInit() {
@@ -158,6 +155,9 @@ void Robot::AutonomousInit() {
   OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
   BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
   TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  IndexerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  IntakeMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  RollerbedMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
 }
 
 void Robot::AutonomousPeriodic() {
@@ -173,6 +173,9 @@ void Robot::AutonomousPeriodic() {
     OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
     BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
     TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    IndexerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    IntakeMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    RollerbedMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
     frc::SmartDashboard::PutString("Auto/State", !autoEnabled ? "Disabled by Dashboard Toggle" : "Do Nothing");
     return;
   }
@@ -195,27 +198,33 @@ void Robot::AutonomousPeriodic() {
   const double bottomFeederSign = revBottom ? -1.0 : 1.0; // Normally +feederSpeed
 
   if (t < spinupSec) {
-    // Phase 1: Flywheels spin up, feeders hold
+    // Phase 1: Flywheels spin up, feeders hold (both outtake motors spin same way)
     OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{outtakeSpeed * outtakeSign});
-    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{-outtakeSpeed * outtakeSign});
+    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{outtakeSpeed * outtakeSign});
     BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
     TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    IndexerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    IntakeMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    RollerbedMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
 
     frc::SmartDashboard::PutString("Auto/State", "Phase 1: Spinup Flywheels");
     frc::SmartDashboard::PutNumber("Auto/OuttakeLeftDuty", outtakeSpeed * outtakeSign);
-    frc::SmartDashboard::PutNumber("Auto/OuttakeRightDuty", -outtakeSpeed * outtakeSign);
+    frc::SmartDashboard::PutNumber("Auto/OuttakeRightDuty", outtakeSpeed * outtakeSign);
     frc::SmartDashboard::PutNumber("Auto/BottomFeederDuty", 0.0);
     frc::SmartDashboard::PutNumber("Auto/TopFeederDuty", 0.0);
   } else if (t < (spinupSec + feedDurationSec)) {
     // Phase 2: Feeders push preload through spinning flywheels
     OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{outtakeSpeed * outtakeSign});
-    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{-outtakeSpeed * outtakeSign});
+    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{outtakeSpeed * outtakeSign});
     BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{feederSpeed * bottomFeederSign});
     TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{feederSpeed * topFeederSign});
+    IndexerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{feederSpeed});
+    IntakeMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
+    RollerbedMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
 
     frc::SmartDashboard::PutString("Auto/State", "Phase 2: Feeding / Launching Preload");
     frc::SmartDashboard::PutNumber("Auto/OuttakeLeftDuty", outtakeSpeed * outtakeSign);
-    frc::SmartDashboard::PutNumber("Auto/OuttakeRightDuty", -outtakeSpeed * outtakeSign);
+    frc::SmartDashboard::PutNumber("Auto/OuttakeRightDuty", outtakeSpeed * outtakeSign);
     frc::SmartDashboard::PutNumber("Auto/BottomFeederDuty", feederSpeed * bottomFeederSign);
     frc::SmartDashboard::PutNumber("Auto/TopFeederDuty", feederSpeed * topFeederSign);
   } else {
@@ -224,6 +233,9 @@ void Robot::AutonomousPeriodic() {
     OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
     BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
     TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    IndexerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    IntakeMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    RollerbedMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
 
     frc::SmartDashboard::PutString("Auto/State", "Phase 3: Shot Complete (Idle)");
     frc::SmartDashboard::PutNumber("Auto/OuttakeLeftDuty", 0.0);
@@ -292,25 +304,6 @@ void Robot::TeleopPeriodic() {
   }
   frc::SmartDashboard::PutBoolean("Drive/IsReversed", reverseForward);
 
-<<<<<<< HEAD
-  // Drive mode (ChimiSwerve Sec 2.1a & Sec 3.7):
-  // Can be toggled via SmartDashboard "Drive Mode" chooser or "Drive/FieldCentric" checkbox.
-  // Automatically falls back to RobotCentric if Pigeon2 gyro is disconnected.
-  const bool wantFieldFromChooser = (m_driveModeChooser.GetSelected() == "FieldCentric");
-  const bool wantFieldFromToggle = frc::SmartDashboard::GetBoolean("Drive/FieldCentric", m_wantFieldCentric);
-  if (wantFieldFromChooser != m_lastChooserField) {
-    m_wantFieldCentric = wantFieldFromChooser;
-    m_lastChooserField = wantFieldFromChooser;
-    m_lastToggleField = m_wantFieldCentric;
-    frc::SmartDashboard::PutBoolean("Drive/FieldCentric", m_wantFieldCentric);
-  } else if (wantFieldFromToggle != m_lastToggleField) {
-    m_wantFieldCentric = wantFieldFromToggle;
-    m_lastToggleField = wantFieldFromToggle;
-  }
-
-  const bool gyroConnected = m_pigeon.IsConnected();
-  FieldCentric = m_wantFieldCentric && gyroConnected;
-=======
   // Driver controller R1 bumper toggles TankDrive mode live
   bool dashTank = frc::SmartDashboard::GetBoolean("Drive/TankDrive", true);
   bool chooserTank = (m_driveModeChooser.GetSelected() == "TankDrive");
@@ -323,10 +316,10 @@ void Robot::TeleopPeriodic() {
   // Drive mode: default is RobotCentric; only FieldCentric when explicitly selected, gyro connected, and not in TankDrive
   bool wantFieldFromChooser = (m_driveModeChooser.GetSelected() == "FieldCentric");
   bool wantFieldFromToggle = frc::SmartDashboard::GetBoolean("Drive/FieldCentric", false);
-  FieldCentric = !m_isTankDrive && (wantFieldFromChooser || wantFieldFromToggle) && m_pigeon.IsConnected();
->>>>>>> 5cdf21f995665ba9776b6c4f8cfef68769ba83c0
+  const bool gyroConnected = m_pigeon.IsConnected();
+  FieldCentric = !m_isTankDrive && (wantFieldFromChooser || wantFieldFromToggle) && gyroConnected;
   frc::SmartDashboard::PutBoolean("Drive/IsFieldCentric", FieldCentric);
-  frc::SmartDashboard::PutBoolean("Gyro/FaultFallbackToRobotCentric", m_wantFieldCentric && !gyroConnected);
+  frc::SmartDashboard::PutBoolean("Gyro/FaultFallbackToRobotCentric", (wantFieldFromChooser || wantFieldFromToggle) && !gyroConnected);
 
   bool holdSteer = frc::SmartDashboard::GetBoolean("Drive/Tank_HoldWheelsStraight", true);
 
@@ -345,8 +338,19 @@ void Robot::TeleopPeriodic() {
 
   m_swerve.Update(x, y, x2, GyroValue, triggerL, triggerR, FieldCentric, m_isTankDrive, holdSteer);
 
-  // ========== Top Half Mechanism Controls (Controller Bumper or Dashboard Overrides) ==========
-  bool topHalfBumper = GetDriverRightBumper();
+  // ========== Top Half Mechanism Controls (Cross / X button to run; Triangle or Dashboard to toggle) ==========
+  // Toggle top half enable state live via PS5 Triangle button
+  bool dashTopHalf = frc::SmartDashboard::GetBoolean("TopHalf/Enabled", false);
+  if (GetDriverTriangleButtonPressed()) {
+    dashTopHalf = !dashTopHalf;
+    frc::SmartDashboard::PutBoolean("TopHalf/Enabled", dashTopHalf);
+  }
+  m_topHalfEnabled = dashTopHalf;
+  frc::SmartDashboard::PutBoolean("TopHalf/IsEnabled", m_topHalfEnabled);
+
+  bool xPressed = GetDriverCrossButton();
+  frc::SmartDashboard::PutBoolean("TopHalf/CrossHeld", xPressed);
+
   bool revTop = frc::SmartDashboard::GetBoolean("Diagnostics/ReverseTopFeeder", false);
   bool revBottom = frc::SmartDashboard::GetBoolean("Diagnostics/ReverseBottomFeeder", false);
   bool revOuttake = frc::SmartDashboard::GetBoolean("Diagnostics/ReverseOuttake", false);
@@ -363,18 +367,27 @@ void Robot::TeleopPeriodic() {
   double topFeederSign = revTop ? 1.0 : -1.0;       // Normally -feederSpeed
   double bottomFeederSign = revBottom ? -1.0 : 1.0; // Normally +feederSpeed
 
-  frc::SmartDashboard::PutBoolean("TopHalf/BumperHeld", topHalfBumper);
+  if (m_topHalfEnabled && xPressed) {
+    // Top Half active: Outtake motors spin the SAME way (same sign)
+    double outDuty = outtakeBaseSpeed * outtakeSign;
+    double topDuty = feederBaseSpeed * topFeederSign;
+    double btmDuty = feederBaseSpeed * bottomFeederSign;
 
-  if (topHalfBumper) {
-    OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{outtakeBaseSpeed * outtakeSign});
-    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{-outtakeBaseSpeed * outtakeSign});
-    BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{feederBaseSpeed * bottomFeederSign});
-    TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{feederBaseSpeed * topFeederSign});
+    OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{outDuty});
+    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{outDuty}); // Spin SAME way
+    BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{btmDuty});
+    TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{topDuty});
+    IndexerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{feederBaseSpeed});
+    IntakeMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
+    RollerbedMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
 
-    frc::SmartDashboard::PutNumber("TopHalf/OuttakeLeftDuty", outtakeBaseSpeed * outtakeSign);
-    frc::SmartDashboard::PutNumber("TopHalf/OuttakeRightDuty", -outtakeBaseSpeed * outtakeSign);
-    frc::SmartDashboard::PutNumber("TopHalf/BottomFeederDuty", feederBaseSpeed * bottomFeederSign);
-    frc::SmartDashboard::PutNumber("TopHalf/TopFeederDuty", feederBaseSpeed * topFeederSign);
+    frc::SmartDashboard::PutNumber("TopHalf/OuttakeLeftDuty", outDuty);
+    frc::SmartDashboard::PutNumber("TopHalf/OuttakeRightDuty", outDuty);
+    frc::SmartDashboard::PutNumber("TopHalf/BottomFeederDuty", btmDuty);
+    frc::SmartDashboard::PutNumber("TopHalf/TopFeederDuty", topDuty);
+    frc::SmartDashboard::PutNumber("TopHalf/IndexerDuty", feederBaseSpeed);
+    frc::SmartDashboard::PutNumber("TopHalf/IntakeDuty", 0.70);
+    frc::SmartDashboard::PutNumber("TopHalf/RollerbedDuty", 0.70);
   } else if (manualTop || manualBottom || manualOuttake) {
     // Manual diagnostic overrides triggered from Reflect buttons/toggles
     double outDuty = (manualOuttake ? manualSpeed : 0.0) * outtakeSign;
@@ -382,24 +395,36 @@ void Robot::TeleopPeriodic() {
     double btmDuty = (manualBottom ? manualSpeed : 0.0) * (revBottom ? -1.0 : 1.0);
 
     OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{outDuty});
-    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{-outDuty});
+    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{outDuty}); // Spin SAME way
     BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{btmDuty});
     TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{topDuty});
+    IndexerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    IntakeMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    RollerbedMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
 
     frc::SmartDashboard::PutNumber("TopHalf/OuttakeLeftDuty", outDuty);
-    frc::SmartDashboard::PutNumber("TopHalf/OuttakeRightDuty", -outDuty);
+    frc::SmartDashboard::PutNumber("TopHalf/OuttakeRightDuty", outDuty);
     frc::SmartDashboard::PutNumber("TopHalf/BottomFeederDuty", btmDuty);
     frc::SmartDashboard::PutNumber("TopHalf/TopFeederDuty", topDuty);
+    frc::SmartDashboard::PutNumber("TopHalf/IndexerDuty", 0.0);
+    frc::SmartDashboard::PutNumber("TopHalf/IntakeDuty", 0.0);
+    frc::SmartDashboard::PutNumber("TopHalf/RollerbedDuty", 0.0);
   } else {
     OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
     OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
     BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
     TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    IndexerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    IntakeMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    RollerbedMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
 
     frc::SmartDashboard::PutNumber("TopHalf/OuttakeLeftDuty", 0.0);
     frc::SmartDashboard::PutNumber("TopHalf/OuttakeRightDuty", 0.0);
     frc::SmartDashboard::PutNumber("TopHalf/BottomFeederDuty", 0.0);
     frc::SmartDashboard::PutNumber("TopHalf/TopFeederDuty", 0.0);
+    frc::SmartDashboard::PutNumber("TopHalf/IndexerDuty", 0.0);
+    frc::SmartDashboard::PutNumber("TopHalf/IntakeDuty", 0.0);
+    frc::SmartDashboard::PutNumber("TopHalf/RollerbedDuty", 0.0);
   }
 }
 
@@ -409,8 +434,11 @@ void Robot::DisabledInit() {
   m_swerve.DisabledInit();
   BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
   TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  IndexerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
   OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
   OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  IntakeMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  RollerbedMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
 }
 
 void Robot::DisabledPeriodic() {
@@ -537,8 +565,13 @@ bool Robot::GetDriverResetGyroPressed() {
   return c.GetTouchpadButtonPressed() ||
          c.GetSquareButtonPressed() ||
          c.GetCreateButtonPressed() ||
-         c.GetOptionsButtonPressed() ||
-         c.GetCrossButtonPressed();
+         c.GetOptionsButtonPressed();
+}
+
+bool Robot::GetDriverTriangleButtonPressed() {
+  int port = GetDriverPort();
+  if (port == 1) return m_ps5Controller1.GetTriangleButtonPressed();
+  return m_ps5Controller0.GetTriangleButtonPressed();
 }
 
 bool Robot::GetDriverCrossButton() const {
@@ -561,37 +594,7 @@ int Robot::GetDriverPOV() const {
 // ========== Dashboard & Diagnostics Helpers (Reflect compatible) ==========
 
 void Robot::UpdateServoTelemetry() {
-  // Read current pulse width in microseconds from REV Servo Hub
-  int pw2 = m_servoChannel2.GetPulseWidth();
-  int pw3 = m_servoChannel3.GetPulseWidth();
-
-  // Convert pulse width to degrees: standard 1000us (0 deg) to 2000us (180 deg)
-  // or clamped across 500-2500us
-  double deg2 = (pw2 > 0) ? std::clamp((static_cast<double>(pw2) - 1000.0) * 180.0 / 1000.0, 0.0, 180.0) : 90.0;
-  double deg3 = (pw3 > 0) ? std::clamp((static_cast<double>(pw3) - 1000.0) * 180.0 / 1000.0, 0.0, 180.0) : 90.0;
-
-  frc::SmartDashboard::PutNumber("Servo/Channel2_PulseWidth_us", pw2);
-  frc::SmartDashboard::PutNumber("Servo/Channel2_Angle_Deg", deg2);
-  frc::SmartDashboard::PutNumber("Servo/Channel2_Current_A", m_servoChannel2.GetCurrent());
-  frc::SmartDashboard::PutBoolean("Servo/Channel2_Enabled", m_servoChannel2.IsEnabled());
-
-  frc::SmartDashboard::PutNumber("Servo/Channel3_PulseWidth_us", pw3);
-  frc::SmartDashboard::PutNumber("Servo/Channel3_Angle_Deg", deg3);
-  frc::SmartDashboard::PutNumber("Servo/Channel3_Current_A", m_servoChannel3.GetCurrent());
-  frc::SmartDashboard::PutBoolean("Servo/Channel3_Enabled", m_servoChannel3.IsEnabled());
-
-  frc::SmartDashboard::PutNumber("Servo/Hub_Voltage_V", m_servoHub.GetDeviceVoltage());
-  frc::SmartDashboard::PutNumber("Servo/Hub_Current_A", m_servoHub.GetDeviceCurrent());
-
-  // Check if operator adjusted target pulse width via Reflect Slider widget
-  int cmdPw2 = static_cast<int>(frc::SmartDashboard::GetNumber("Servo/Channel2_CmdPulseWidth", 1500));
-  int cmdPw3 = static_cast<int>(frc::SmartDashboard::GetNumber("Servo/Channel3_CmdPulseWidth", 1500));
-  if (cmdPw2 >= 500 && cmdPw2 <= 2500 && std::abs(cmdPw2 - pw2) > 5) {
-    m_servoChannel2.SetPulseWidth(cmdPw2);
-  }
-  if (cmdPw3 >= 500 && cmdPw3 <= 2500 && std::abs(cmdPw3 - pw3) > 5) {
-    m_servoChannel3.SetPulseWidth(cmdPw3);
-  }
+  // REV Servo Hub is disabled/commented out
 }
 
 void Robot::UpdateDiagnostics() {
@@ -643,7 +646,8 @@ void Robot::UpdateDiagnostics() {
   frc::SmartDashboard::PutNumber("Diagnostics/OuttakeRight_DutyCycle", OuttakeRight.GetDutyCycle().GetValueAsDouble());
 
   // Drive Mode & Modules Summary
-  frc::SmartDashboard::PutString("Diagnostics/Drive_Mode", FieldCentric ? "FieldCentric" : "RobotCentric");
+  std::string currentDriveMode = m_isTankDrive ? "TankDrive" : (FieldCentric ? "FieldCentric" : "RobotCentric");
+  frc::SmartDashboard::PutString("Diagnostics/Drive_Mode", currentDriveMode);
   frc::SmartDashboard::PutString("Diagnostics/Active_Modules", "FL (30), FR (20), BL (40), BR (10)");
   frc::SmartDashboard::PutString("Diagnostics/FL_Status", "Active (Swerve 3 Connected)");
 }
