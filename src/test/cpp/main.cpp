@@ -35,9 +35,9 @@ TEST(ChimiSwerveConfigTest, CanIdsAndBusesMatchRobotTopology) {
   EXPECT_EQ(DC::kFLSteerId, 31);
   EXPECT_EQ(DC::kFLEncoderId, 32);
 
-  // Swerve 4 (BL): 40, 41, 42
-  EXPECT_EQ(DC::kBLDriveId, 40);
-  EXPECT_EQ(DC::kBLSteerId, 41);
+  // Swerve 4 (BL): 41 (Drive), 40 (Steer), 42 (Encoder)
+  EXPECT_EQ(DC::kBLDriveId, 41);
+  EXPECT_EQ(DC::kBLSteerId, 40);
   EXPECT_EQ(DC::kBLEncoderId, 42);
 
   // Pigeon2 IMU

@@ -613,26 +613,29 @@ void Robot::UpdateDiagnostics() {
   frc::SmartDashboard::PutString("Diagnostics/CANcoder_Status", "Unwired / Disabled");
 
   // Top Half Mechanism Motors (CAN bus: "Tophalf")
-  frc::SmartDashboard::PutNumber("Diagnostics/TopFeeder_Current_A", TopFeederMotor.GetStatorCurrent().GetValueAsDouble());
-  frc::SmartDashboard::PutNumber("Diagnostics/TopFeeder_Temp_C", TopFeederMotor.GetDeviceTemp().GetValueAsDouble());
+  // Throttle current/temp calls to 2 Hz (every 25 loops) to prevent CAN 2.0 RxTimeout (-1003)
+  static int s_mechDiagLoop = 0;
+  if (++s_mechDiagLoop >= 25) {
+    s_mechDiagLoop = 0;
+    frc::SmartDashboard::PutNumber("Diagnostics/TopFeeder_Current_A", TopFeederMotor.GetStatorCurrent().GetValueAsDouble());
+    frc::SmartDashboard::PutNumber("Diagnostics/TopFeeder_Temp_C", TopFeederMotor.GetDeviceTemp().GetValueAsDouble());
+    frc::SmartDashboard::PutNumber("Diagnostics/BottomFeeder_Current_A", BottomFeederMotor.GetStatorCurrent().GetValueAsDouble());
+    frc::SmartDashboard::PutNumber("Diagnostics/BottomFeeder_Temp_C", BottomFeederMotor.GetDeviceTemp().GetValueAsDouble());
+    frc::SmartDashboard::PutNumber("Diagnostics/OuttakeLeft_Current_A", OuttakeLeft.GetStatorCurrent().GetValueAsDouble());
+    frc::SmartDashboard::PutNumber("Diagnostics/OuttakeLeft_Temp_C", OuttakeLeft.GetDeviceTemp().GetValueAsDouble());
+    frc::SmartDashboard::PutNumber("Diagnostics/OuttakeRight_Current_A", OuttakeRight.GetStatorCurrent().GetValueAsDouble());
+    frc::SmartDashboard::PutNumber("Diagnostics/OuttakeRight_Temp_C", OuttakeRight.GetDeviceTemp().GetValueAsDouble());
+  }
+
   frc::SmartDashboard::PutNumber("Diagnostics/TopFeeder_DutyCycle", TopFeederMotor.GetDutyCycle().GetValueAsDouble());
-
-  frc::SmartDashboard::PutNumber("Diagnostics/BottomFeeder_Current_A", BottomFeederMotor.GetStatorCurrent().GetValueAsDouble());
-  frc::SmartDashboard::PutNumber("Diagnostics/BottomFeeder_Temp_C", BottomFeederMotor.GetDeviceTemp().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Diagnostics/BottomFeeder_DutyCycle", BottomFeederMotor.GetDutyCycle().GetValueAsDouble());
-
-  frc::SmartDashboard::PutNumber("Diagnostics/OuttakeLeft_Current_A", OuttakeLeft.GetStatorCurrent().GetValueAsDouble());
-  frc::SmartDashboard::PutNumber("Diagnostics/OuttakeLeft_Temp_C", OuttakeLeft.GetDeviceTemp().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Diagnostics/OuttakeLeft_DutyCycle", OuttakeLeft.GetDutyCycle().GetValueAsDouble());
-
-  frc::SmartDashboard::PutNumber("Diagnostics/OuttakeRight_Current_A", OuttakeRight.GetStatorCurrent().GetValueAsDouble());
-  frc::SmartDashboard::PutNumber("Diagnostics/OuttakeRight_Temp_C", OuttakeRight.GetDeviceTemp().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Diagnostics/OuttakeRight_DutyCycle", OuttakeRight.GetDutyCycle().GetValueAsDouble());
 
   // Drive Mode & Modules Summary
   std::string currentDriveMode = m_isTankDrive ? "TankDrive" : (FieldCentric ? "FieldCentric" : "RobotCentric");
   frc::SmartDashboard::PutString("Diagnostics/Drive_Mode", currentDriveMode);
-  frc::SmartDashboard::PutString("Diagnostics/Active_Modules", "FL (30/31), FR (20/21), BL (40/41), BR (10/11)");
+  frc::SmartDashboard::PutString("Diagnostics/Active_Modules", "FL (30/31), FR (20/21), BL (41/40), BR (10/11)");
   frc::SmartDashboard::PutString("Diagnostics/FL_Status", "Active (Swerve 3 Connected)");
 }
 

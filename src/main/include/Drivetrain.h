@@ -93,17 +93,17 @@ class Drivetrain {
   double odoDeltaTime = 0;
   units::time::second_t odoLastTime = units::time::second_t(0);
 
-  // Kraken Drive motors *0 (10, 20, 30, 40)
-  ctre::phoenix6::hardware::TalonFX m_FL_Drive{DrivetrainConstants::kFLDriveId};
-  ctre::phoenix6::hardware::TalonFX m_FR_Drive{DrivetrainConstants::kFRDriveId};
-  ctre::phoenix6::hardware::TalonFX m_BL_Drive{DrivetrainConstants::kBLDriveId};
-  ctre::phoenix6::hardware::TalonFX m_BR_Drive{DrivetrainConstants::kBRDriveId};
+  // Kraken Drive motors (FL=30, FR=20, BL=41, BR=10)
+  ctre::phoenix6::hardware::TalonFX m_FL_Drive{DrivetrainConstants::kFLDriveId, ctre::phoenix6::CANBus{DrivetrainConstants::kCanBus}};
+  ctre::phoenix6::hardware::TalonFX m_FR_Drive{DrivetrainConstants::kFRDriveId, ctre::phoenix6::CANBus{DrivetrainConstants::kCanBus}};
+  ctre::phoenix6::hardware::TalonFX m_BL_Drive{DrivetrainConstants::kBLDriveId, ctre::phoenix6::CANBus{DrivetrainConstants::kCanBus}};
+  ctre::phoenix6::hardware::TalonFX m_BR_Drive{DrivetrainConstants::kBRDriveId, ctre::phoenix6::CANBus{DrivetrainConstants::kCanBus}};
 
-  // Kraken Steering motors *1 (11, 21, 31, 41)
-  ctre::phoenix6::hardware::TalonFX m_FL_Steer{DrivetrainConstants::kFLSteerId};
-  ctre::phoenix6::hardware::TalonFX m_FR_Steer{DrivetrainConstants::kFRSteerId};
-  ctre::phoenix6::hardware::TalonFX m_BL_Steer{DrivetrainConstants::kBLSteerId};
-  ctre::phoenix6::hardware::TalonFX m_BR_Steer{DrivetrainConstants::kBRSteerId};
+  // Kraken Steering motors (FL=31, FR=21, BL=40, BR=11)
+  ctre::phoenix6::hardware::TalonFX m_FL_Steer{DrivetrainConstants::kFLSteerId, ctre::phoenix6::CANBus{DrivetrainConstants::kCanBus}};
+  ctre::phoenix6::hardware::TalonFX m_FR_Steer{DrivetrainConstants::kFRSteerId, ctre::phoenix6::CANBus{DrivetrainConstants::kCanBus}};
+  ctre::phoenix6::hardware::TalonFX m_BL_Steer{DrivetrainConstants::kBLSteerId, ctre::phoenix6::CANBus{DrivetrainConstants::kCanBus}};
+  ctre::phoenix6::hardware::TalonFX m_BR_Steer{DrivetrainConstants::kBRSteerId, ctre::phoenix6::CANBus{DrivetrainConstants::kCanBus}};
 
   // CANcoders unwired and disabled (Tank Drive only on swerve wheels)
   // ctre::phoenix6::hardware::CANcoder CANcoderFL{32, ctre::phoenix6::CANBus{"rio"}};
