@@ -40,7 +40,10 @@ class Drivetrain {
   void DisabledPeriodic();
 
   void Update(double x, double y, double x2, double GyroValue,
-              double triggerL, double triggerR, bool FieldCentric);
+              double triggerL, double triggerR, bool FieldCentric,
+              bool isTankDrive = true, bool holdSteer = true);
+
+  static std::pair<double, double> TankDriveKinematics(double throttle, double turn);
 
   double MinimizeRotation(double targetAngle, double currentAngle);
   static double MinimizeRotation(double targetAngleRad, double currentAngleRad, double& speedPercent);

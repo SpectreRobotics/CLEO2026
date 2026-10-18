@@ -22,10 +22,13 @@ Robot::Robot() {
   m_chooser.AddOption(kAutoNameCustom, kAutoNameCustom);
   frc::SmartDashboard::PutData("Auto Modes", &m_chooser);
 
-  // Drive mode chooser - defaults to RobotCentric
-  m_driveModeChooser.SetDefaultOption("RobotCentric", "RobotCentric");
+  // Drive mode chooser - defaults to TankDrive for immediate, spin-free driving
+  m_driveModeChooser.SetDefaultOption("TankDrive", "TankDrive");
+  m_driveModeChooser.AddOption("RobotCentric", "RobotCentric");
   m_driveModeChooser.AddOption("FieldCentric", "FieldCentric");
   frc::SmartDashboard::PutData("Drive Mode", &m_driveModeChooser);
+  frc::SmartDashboard::PutBoolean("Drive/TankDrive", true);
+  frc::SmartDashboard::PutBoolean("Drive/Tank_HoldWheelsStraight", true);
   frc::SmartDashboard::PutBoolean("Drive/FieldCentric", false);
 
   // Robot orientation chooser - reverses forward and backward facing direction
@@ -77,7 +80,13 @@ void Robot::RobotPeriodic() {
   frc::SmartDashboard::PutString("Controller/ActiveType", "PS5 DualSense");
 
   // Diagnostics panel
-  frc::SmartDashboard::PutString("Diagnostics/Drive_Mode", FieldCentric ? "FieldCentric" : "RobotCentric");
+  bool wantTankFromChooser = (m_driveModeChooser.GetSelected() == "TankDrive");
+  bool wantTankFromToggle = frc::SmartDashboard::GetBoolean("Drive/TankDrive", true);
+  m_isTankDrive = wantTankFromChooser || wantTankFromToggle;
+
+  std::string currentDriveMode = m_isTankDrive ? "TankDrive" : (FieldCentric ? "FieldCentric" : "RobotCentric");
+  frc::SmartDashboard::PutString("Diagnostics/Drive_Mode", currentDriveMode);
+  frc::SmartDashboard::PutBoolean("Drive/IsTankDrive", m_isTankDrive);
   frc::SmartDashboard::PutString("Diagnostics/Active_Modules", "FL (30), FR (20), BL (40), BR (10)");
   frc::SmartDashboard::PutString("Diagnostics/FL_Status", "Active (Swerve 3 Connected)");
 }
@@ -147,11 +156,22 @@ void Robot::TeleopPeriodic() {
   }
   frc::SmartDashboard::PutBoolean("Drive/IsReversed", reverseForward);
 
-  // Drive mode: default is RobotCentric; only FieldCentric when explicitly selected and gyro connected
+  // Driver controller R1 bumper toggles TankDrive mode live
+  bool dashTank = frc::SmartDashboard::GetBoolean("Drive/TankDrive", true);
+  bool chooserTank = (m_driveModeChooser.GetSelected() == "TankDrive");
+  if (GetDriverRightBumperPressed()) {
+    dashTank = !dashTank;
+    frc::SmartDashboard::PutBoolean("Drive/TankDrive", dashTank);
+  }
+  m_isTankDrive = dashTank || chooserTank;
+
+  // Drive mode: default is RobotCentric; only FieldCentric when explicitly selected, gyro connected, and not in TankDrive
   bool wantFieldFromChooser = (m_driveModeChooser.GetSelected() == "FieldCentric");
   bool wantFieldFromToggle = frc::SmartDashboard::GetBoolean("Drive/FieldCentric", false);
-  FieldCentric = (wantFieldFromChooser || wantFieldFromToggle) && m_pigeon.IsConnected();
+  FieldCentric = !m_isTankDrive && (wantFieldFromChooser || wantFieldFromToggle) && m_pigeon.IsConnected();
   frc::SmartDashboard::PutBoolean("Drive/IsFieldCentric", FieldCentric);
+
+  bool holdSteer = frc::SmartDashboard::GetBoolean("Drive/Tank_HoldWheelsStraight", true);
 
   // Telemetry for verifying driver inputs live on SmartDashboard
   int activePort = GetDriverPort();
@@ -166,7 +186,7 @@ void Robot::TeleopPeriodic() {
   frc::SmartDashboard::PutNumber("Driver/Cmd_STR", x);
   frc::SmartDashboard::PutNumber("Driver/Cmd_ROT", x2);
 
-  m_swerve.Update(x, y, x2, GyroValue, triggerL, triggerR, FieldCentric);
+  m_swerve.Update(x, y, x2, GyroValue, triggerL, triggerR, FieldCentric, m_isTankDrive, holdSteer);
 
   // ========== Mechanism Controls (Commented out - Swerve only) ==========
   // // Shooting / Outtake control using right trigger (R2)
@@ -267,6 +287,12 @@ double Robot::GetDriverRightX() const {
   int port = GetDriverPort();
   if (port == 1) return m_ps5Controller1.GetRightX();
   return m_ps5Controller0.GetRightX();
+}
+
+double Robot::GetDriverRightY() const {
+  int port = GetDriverPort();
+  if (port == 1) return m_ps5Controller1.GetRightY();
+  return m_ps5Controller0.GetRightY();
 }
 
 double Robot::GetDriverLeftTrigger() const {
