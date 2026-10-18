@@ -12,6 +12,7 @@
 #include <ctre/phoenix6/CANcoder.hpp>
 #include <ctre/phoenix6/TalonFX.hpp>
 #include <ctre/phoenix6/controls/DutyCycleOut.hpp>
+#include <ctre/phoenix6/controls/NeutralOut.hpp>
 #include <ctre/phoenix6/controls/PositionDutyCycle.hpp>
 #include <frc/geometry/Rotation2d.h>
 #include <frc/Timer.h>

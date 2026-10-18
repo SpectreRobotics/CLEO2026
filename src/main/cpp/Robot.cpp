@@ -141,6 +141,7 @@ void Robot::RobotPeriodic() {
 void Robot::AutonomousInit() {
   m_autoSelected = m_chooser.GetSelected();
   wpi::print("Auto selected: {}\n", m_autoSelected);
+  m_swerve.ConfigureMotors();
   m_swerve.ResetHeading(GyroValue);
   m_swerve.ResetOdometry();
 

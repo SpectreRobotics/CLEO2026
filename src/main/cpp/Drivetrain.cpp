@@ -89,10 +89,10 @@ void Drivetrain::ConfigureMotors() {
   m_BL_Steer.GetConfigurator().Apply(steerBrakeConfig, 100_ms);
   m_BR_Steer.GetConfigurator().Apply(steerBrakeConfig, 100_ms);
 
-  m_FL_Steer.Set(0.0);
-  m_FR_Steer.Set(0.0);
-  m_BL_Steer.Set(0.0);
-  m_BR_Steer.Set(0.0);
+  m_FL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_FR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_BL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_BR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
 
   frc::SmartDashboard::PutString("Diagnostics/FL_Steer_ConfigStatus", flStatus.GetName());
 
@@ -158,10 +158,10 @@ void Drivetrain::DisabledInit() {
   m_FR_Drive.Set(0.0);
   m_BL_Drive.Set(0.0);
   m_BR_Drive.Set(0.0);
-  m_FL_Steer.Set(0.0);
-  m_FR_Steer.Set(0.0);
-  m_BL_Steer.Set(0.0);
-  m_BR_Steer.Set(0.0);
+  m_FL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_FR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_BL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_BR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   oldspeedFL = 0; oldspeedFR = 0; oldspeedBL = 0; oldspeedBR = 0;
   m_flipFL = false; m_flipFR = false; m_flipBL = false; m_flipBR = false;
   m_wasDriving = false;
@@ -176,19 +176,18 @@ void Drivetrain::DisabledPeriodic() {
   m_FR_Drive.Set(0.0);
   m_BL_Drive.Set(0.0);
   m_BR_Drive.Set(0.0);
-  m_FL_Steer.Set(0.0);
-  m_FR_Steer.Set(0.0);
-  m_BL_Steer.Set(0.0);
-  m_BR_Steer.Set(0.0);
+  m_FL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_FR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_BL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_BR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   m_wasDriving = false;
 
   SyncSmartDashboardPID();
 
-  // const double curFLTurns = std::remainder(GetCANcoderFLTurns() - kSwerve3FLZeroTurns, 1.0);
-  const double curFLTurns = std::remainder(m_FL_Steer.GetPosition().GetValueAsDouble() - kSwerve3FLZeroTurns, 1.0);
-  const double curFRTurns = std::remainder(m_FR_Steer.GetPosition().GetValueAsDouble() - kSwerve2FRZeroTurns, 1.0);
-  const double curBLTurns = std::remainder(m_BL_Steer.GetPosition().GetValueAsDouble() - kSwerve4BLZeroTurns, 1.0);
-  const double curBRTurns = std::remainder(m_BR_Steer.GetPosition().GetValueAsDouble() - kSwerve1BRZeroTurns, 1.0);
+  const double curFLTurns = std::remainder(GetCANcoderFLTurns() - kSwerve3FLZeroTurns, 1.0);
+  const double curFRTurns = std::remainder(CANcoderFR.GetAbsolutePosition().GetValueAsDouble() - kSwerve2FRZeroTurns, 1.0);
+  const double curBLTurns = std::remainder(CANcoderBL.GetAbsolutePosition().GetValueAsDouble() - kSwerve4BLZeroTurns, 1.0);
+  const double curBRTurns = std::remainder(CANcoderBR.GetAbsolutePosition().GetValueAsDouble() - kSwerve1BRZeroTurns, 1.0);
 
   const double curFLDeg = curFLTurns * 360.0;
   const double curFRDeg = curFRTurns * 360.0;
@@ -241,10 +240,10 @@ void Drivetrain::DisabledPeriodic() {
 }
 
 void Drivetrain::TestZeroAzimuth() {
-  m_FL_Steer.Set(0.0);
-  m_FR_Steer.Set(0.0);
-  m_BL_Steer.Set(0.0);
-  m_BR_Steer.Set(0.0);
+  m_FL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_FR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_BL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_BR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   m_FL_Drive.Set(0.0);
   m_FR_Drive.Set(0.0);
   m_BL_Drive.Set(0.0);
@@ -252,10 +251,11 @@ void Drivetrain::TestZeroAzimuth() {
 }
 
 void Drivetrain::TestRotateModules(double speed) {
-  m_FL_Steer.Set(0.0);
-  m_FR_Steer.Set(0.0);
-  m_BL_Steer.Set(0.0);
-  m_BR_Steer.Set(0.0);
+  // Swerve is disabled: Steer motors never spin, strictly held in Brake mode
+  m_FL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_FR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_BL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_BR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
   m_FL_Drive.Set(0.0);
   m_FR_Drive.Set(0.0);
   m_BL_Drive.Set(0.0);
@@ -267,10 +267,10 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
                         bool isTankDrive, bool holdSteer) {
   // Steer motors permanently commanded 0.0 power in Brake mode
   // Modules stay locked mechanically where manually aligned before match start
-  m_FL_Steer.Set(0.0);
-  m_FR_Steer.Set(0.0);
-  m_BL_Steer.Set(0.0);
-  m_BR_Steer.Set(0.0);
+  m_FL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_FR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_BL_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
+  m_BR_Steer.SetControl(ctre::phoenix6::controls::NeutralOut{});
 
   // Live Swerve 3 (CAN 31) diagnostics while driving
   frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_Temp_C", m_FL_Steer.GetDeviceTemp().GetValueAsDouble());
