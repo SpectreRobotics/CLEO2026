@@ -76,91 +76,32 @@ void Drivetrain::ConfigureMotors() {
   m_BL_Drive.GetConfigurator().Apply(driveConfig, 100_ms);
   m_BR_Drive.GetConfigurator().Apply(driveConfig, 100_ms);
 
-  Posconfig.kP = ModuleP;
-  Posconfig.kI = ModuleI;
-  Posconfig.kD = ModuleD;
-  Posconfig.kS = ModuleS;
+  // Steer motors fully disabled: pure open-loop RotorSensor mode, Brake mode, 0 output
+  // Steer modules are manually aligned straight and physically locked via Brake mode
+  ctre::phoenix6::configs::TalonFXConfiguration steerBrakeConfig{};
+  steerBrakeConfig.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
+  steerBrakeConfig.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RotorSensor;
+  steerBrakeConfig.CurrentLimits.StatorCurrentLimit = units::current::ampere_t{DC::kSteerCurrentLimit};
+  steerBrakeConfig.CurrentLimits.StatorCurrentLimitEnable = true;
 
-  // Swerve 3 (FL, Steer 31 on "rio", CANcoder 32 moved to "rio"):
-  // Identical 1-to-1 hardware RemoteCANcoder config as FR, BL, BR.
-  // ContinuousWrap = false because C++ computes continuous shortest-path target (kZeroTurns + m_contTarget),
-  // which prevents the TalonFX D term from ever seeing a +-0.5 wrap jump and spinning 360 deg!
-  configFL.Feedback.FeedbackRemoteSensorID = CANcoderFL.GetDeviceID();
-  configFL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
-  configFL.Feedback.SensorToMechanismRatio = 1.0;
-  configFL.Feedback.RotorToSensorRatio = 18;
-  configFL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
-  configFL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  configFL.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
-  configFL.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
-  configFL.CurrentLimits.StatorCurrentLimit = units::current::ampere_t{DC::kSteerCurrentLimit};
-  configFL.CurrentLimits.StatorCurrentLimitEnable = true;
-  configFL.ClosedLoopGeneral.ContinuousWrap = false;
-  configFL.Slot0 = Posconfig;
+  auto flStatus = m_FL_Steer.GetConfigurator().Apply(steerBrakeConfig, 100_ms);
+  m_FR_Steer.GetConfigurator().Apply(steerBrakeConfig, 100_ms);
+  m_BL_Steer.GetConfigurator().Apply(steerBrakeConfig, 100_ms);
+  m_BR_Steer.GetConfigurator().Apply(steerBrakeConfig, 100_ms);
 
-  // --- Commented out: Old configFL when CANcoder 32 was on "intakebus" ---
-  // configFL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RotorSensor;
-  // configFL.OpenLoopRamps.DutyCycleOpenLoopRampPeriod = units::time::second_t(0.0);
-  // configFL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(0.0);
-  // configFL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  // configFL.MotorOutput.PeakForwardDutyCycle = 0.45;
-  // configFL.MotorOutput.PeakReverseDutyCycle = -0.45;
-  // configFL.ClosedLoopGeneral.ContinuousWrap = false;
-  // configFL.Slot0 = Posconfig;
-
-  configFR.Feedback.FeedbackRemoteSensorID = CANcoderFR.GetDeviceID();
-  configFR.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
-  configFR.Feedback.SensorToMechanismRatio = 1.0;
-  configFR.Feedback.RotorToSensorRatio = 18;
-  configFR.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
-  configFR.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  configFR.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
-  configFR.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
-  configFR.CurrentLimits.StatorCurrentLimit = units::current::ampere_t{DC::kSteerCurrentLimit};
-  configFR.CurrentLimits.StatorCurrentLimitEnable = true;
-  configFR.ClosedLoopGeneral.ContinuousWrap = false;
-  configFR.Slot0 = Posconfig;
-
-  configBL.Feedback.FeedbackRemoteSensorID = CANcoderBL.GetDeviceID();
-  configBL.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
-  configBL.Feedback.SensorToMechanismRatio = 1.0;
-  configBL.Feedback.RotorToSensorRatio = 18;
-  configBL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
-  configBL.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  configBL.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
-  configBL.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
-  configBL.CurrentLimits.StatorCurrentLimit = units::current::ampere_t{DC::kSteerCurrentLimit};
-  configBL.CurrentLimits.StatorCurrentLimitEnable = true;
-  configBL.ClosedLoopGeneral.ContinuousWrap = false;
-  configBL.Slot0 = Posconfig;
-
-  configBR.Feedback.FeedbackRemoteSensorID = CANcoderBR.GetDeviceID();
-  configBR.Feedback.FeedbackSensorSource = ctre::phoenix6::signals::FeedbackSensorSourceValue::RemoteCANcoder;
-  configBR.Feedback.SensorToMechanismRatio = 1.0;
-  configBR.Feedback.RotorToSensorRatio = 18;
-  configBR.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
-  configBR.MotorOutput.NeutralMode = ctre::phoenix6::signals::NeutralModeValue::Brake;
-  configBR.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
-  configBR.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
-  configBR.CurrentLimits.StatorCurrentLimit = units::current::ampere_t{DC::kSteerCurrentLimit};
-  configBR.CurrentLimits.StatorCurrentLimitEnable = true;
-  configBR.ClosedLoopGeneral.ContinuousWrap = false;
-  configBR.Slot0 = Posconfig;
-
-  auto flStatus = m_FL_Steer.GetConfigurator().Apply(configFL);
-  m_FL_Steer.GetConfigurator().Apply(Posconfig);
-  m_FR_Steer.GetConfigurator().Apply(configFR);
-  m_FR_Steer.GetConfigurator().Apply(Posconfig);
-  m_BL_Steer.GetConfigurator().Apply(configBL);
-  m_BL_Steer.GetConfigurator().Apply(Posconfig);
-  m_BR_Steer.GetConfigurator().Apply(configBR);
-  m_BR_Steer.GetConfigurator().Apply(Posconfig);
+  m_FL_Steer.Set(0.0);
+  m_FR_Steer.Set(0.0);
+  m_BL_Steer.Set(0.0);
+  m_BR_Steer.Set(0.0);
 
   frc::SmartDashboard::PutString("Diagnostics/FL_Steer_ConfigStatus", flStatus.GetName());
 
-  // Publish editable PID, kS, ramp, peak output & deadband fields on SmartDashboard on boot
+  // Publish default dashboard properties
   static bool s_dashInitialized = false;
   if (!s_dashInitialized) {
+    frc::SmartDashboard::PutBoolean("Drive/Invert_BR_Drive", DC::kBRDriveInverted);
+    frc::SmartDashboard::PutNumber("Tank/TurnSensitivity", 0.75);
+    frc::SmartDashboard::PutNumber("Tank/DriveBaseSpeed", 0.50);
     frc::SmartDashboard::PutNumber("Swerve/Steer_kP", ModuleP);
     frc::SmartDashboard::PutNumber("Swerve/Steer_kI", ModuleI);
     frc::SmartDashboard::PutNumber("Swerve/Steer_kD", ModuleD);
@@ -173,8 +114,8 @@ void Drivetrain::ConfigureMotors() {
     frc::SmartDashboard::PutNumber("Swerve/HeadingLock_kP", straightP);
     s_dashInitialized = true;
   }
-  SyncSmartDashboardPID();
 }
+
 
 void Drivetrain::SyncSmartDashboardPID() {
   const float dashP = static_cast<float>(frc::SmartDashboard::GetNumber("Swerve/Steer_kP", ModuleP));
@@ -201,36 +142,14 @@ void Drivetrain::SyncSmartDashboardPID() {
     Posconfig.kI = ModuleI;
     Posconfig.kD = ModuleD;
     Posconfig.kS = ModuleS;
-    m_FL_Steer.GetConfigurator().Apply(Posconfig);
-    m_FR_Steer.GetConfigurator().Apply(Posconfig);
-    m_BL_Steer.GetConfigurator().Apply(Posconfig);
-    m_BR_Steer.GetConfigurator().Apply(Posconfig);
+    // When swerve is fully disabled, steer motors remain locked in open-loop RotorSensor Brake mode
   }
 
   if (std::abs(dashRamp - ModuleRampSeconds) > 1e-4f ||
       std::abs(dashPeak - ModulePeakOutput) > 1e-4f) {
     ModuleRampSeconds = dashRamp;
     ModulePeakOutput = dashPeak;
-    configFL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
-    configFR.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
-    configBL.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
-    configBR.ClosedLoopRamps.DutyCycleClosedLoopRampPeriod = units::time::second_t(ModuleRampSeconds);
-    configFL.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
-    configFL.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
-    configFR.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
-    configFR.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
-    configBL.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
-    configBL.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
-    configBR.MotorOutput.PeakForwardDutyCycle = ModulePeakOutput;
-    configBR.MotorOutput.PeakReverseDutyCycle = -ModulePeakOutput;
-    m_FL_Steer.GetConfigurator().Apply(configFL.ClosedLoopRamps);
-    m_FR_Steer.GetConfigurator().Apply(configFR.ClosedLoopRamps);
-    m_BL_Steer.GetConfigurator().Apply(configBL.ClosedLoopRamps);
-    m_BR_Steer.GetConfigurator().Apply(configBR.ClosedLoopRamps);
-    m_FL_Steer.GetConfigurator().Apply(configFL.MotorOutput);
-    m_FR_Steer.GetConfigurator().Apply(configFR.MotorOutput);
-    m_BL_Steer.GetConfigurator().Apply(configBL.MotorOutput);
-    m_BR_Steer.GetConfigurator().Apply(configBR.MotorOutput);
+    // When swerve is fully disabled, steer motors remain locked in open-loop RotorSensor Brake mode
   }
 }
 
@@ -346,71 +265,102 @@ void Drivetrain::TestRotateModules(double speed) {
 void Drivetrain::Update(double x, double y, double x2, double GyroValue,
                         double triggerL, double triggerR, bool FieldCentric,
                         bool isTankDrive, bool holdSteer) {
-  SyncSmartDashboardPID();
+  // Steer motors permanently commanded 0.0 power in Brake mode
+  // Modules stay locked mechanically where manually aligned before match start
+  m_FL_Steer.Set(0.0);
+  m_FR_Steer.Set(0.0);
+  m_BL_Steer.Set(0.0);
+  m_BR_Steer.Set(0.0);
 
   // Live Swerve 3 (CAN 31) diagnostics while driving
   frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_Temp_C", m_FL_Steer.GetDeviceTemp().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_Current_A", m_FL_Steer.GetStatorCurrent().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_DutyCycle", m_FL_Steer.GetDutyCycle().GetValueAsDouble());
 
-  // When both sticks are centered, stop all drive and steer motors so they never hum or twitch
-  // ChimiSwerve Section 2.3d (Page 36): "we don't want to PID our angle if we aren't trying to move"
-  if (x == 0.0 && y == 0.0 && x2 == 0.0) {
-    targetAngle = GyroValue;
-    oldspeedFL = 0; oldspeedFR = 0; oldspeedBL = 0; oldspeedBR = 0;
-    m_wasDriving = false;
-    m_steerActiveFL = false; m_steerActiveFR = false; m_steerActiveBL = false; m_steerActiveBR = false;
-    iError = 0.0;
-    m_FL_Drive.Set(0.0);
-    m_FR_Drive.Set(0.0);
-    m_BL_Drive.Set(0.0);
-    m_BR_Drive.Set(0.0);
-    m_FL_Steer.Set(0.0);
-    m_FR_Steer.Set(0.0);
-    m_BL_Steer.Set(0.0);
-    m_BR_Steer.Set(0.0);
-    return;
+  // ========== TANK DRIVE ONLY (Swerve Fully Disabled) ==========
+  // Forward/backward throttle from Left Stick Y (y)
+  // Turn: Right Stick X (x2) with priority; Left Stick X (x) with intentional deflection (> 0.15)
+  double throttle = y;
+  const double turnSensitivity = frc::SmartDashboard::GetNumber("Tank/TurnSensitivity", 0.75);
+  double turn = 0.0;
+  if (std::abs(x2) > 0.05) {
+    turn = x2 * turnSensitivity;
+  } else if (std::abs(x) > 0.15) {
+    turn = std::copysign((std::abs(x) - 0.15) / 0.85, x) * (turnSensitivity * 0.85);
   }
 
-  // Swerve fully disabled: Steer motors permanently commanded 0.0 power
-  // In Brake mode, modules stay locked mechanically where manually aligned
-  m_FL_Steer.Set(0.0);
-  m_FR_Steer.Set(0.0);
-  m_BL_Steer.Set(0.0);
-  m_BR_Steer.Set(0.0);
+  // Smooth target calculation: when sticks are released, targets are 0.0,
+  // allowing the rate-limiter to ramp down smoothly without jarring duty cycle steps or motor pulsing
+  double leftTarget = 0.0;
+  double rightTarget = 0.0;
+  if (std::abs(throttle) > 1e-4 || std::abs(turn) > 1e-4) {
+    auto [l, r] = TankDriveKinematics(throttle, turn);
+    leftTarget = l;
+    rightTarget = r;
+  }
 
-  // ========== TANK DRIVE ONLY (Swerve Fully Disabled) ==========
-  // Forward/backward throttle from Left Y (y)
-  // Turn from Right Stick X (x2) or Left Stick X (x) if right stick centered
-  double throttle = y;
-  double turn = (std::abs(x2) > 0.05) ? x2 : x;
-  auto [leftSpeed, rightSpeed] = TankDriveKinematics(throttle, turn);
+  speedFL = leftTarget;
+  speedBL = leftTarget;
+  speedFR = rightTarget;
+  speedBR = rightTarget;
 
-  speedFL = leftSpeed;
-  speedBL = leftSpeed;
-  speedFR = rightSpeed;
-  speedBR = rightSpeed;
-
-  frc::SmartDashboard::PutNumber("Tank/LeftSpeed", leftSpeed);
-  frc::SmartDashboard::PutNumber("Tank/RightSpeed", rightSpeed);
+  frc::SmartDashboard::PutNumber("Tank/LeftSpeed", leftTarget);
+  frc::SmartDashboard::PutNumber("Tank/RightSpeed", rightTarget);
   frc::SmartDashboard::PutBoolean("Drive/IsTankDrive", true);
 
-  // Smooth acceleration ramps
-  double speedFLEr = speedFL - oldspeedFL;
-  oldspeedFL += (speedFLEr >= 0.07) ? 0.07 : (speedFLEr <= -0.07) ? -0.07 : speedFLEr;
-  double speedFREr = speedFR - oldspeedFR;
-  oldspeedFR += (speedFREr >= 0.07) ? 0.07 : (speedFREr <= -0.07) ? -0.07 : speedFREr;
-  double speedBLEr = speedBL - oldspeedBL;
-  oldspeedBL += (speedBLEr >= 0.07) ? 0.07 : (speedBLEr <= -0.07) ? -0.07 : speedBLEr;
-  double speedBREr = speedBR - oldspeedBR;
-  oldspeedBR += (speedBREr >= 0.07) ? 0.07 : (speedBREr <= -0.07) ? -0.07 : speedBREr;
+  // Smooth acceleration & deceleration ramps (prevents aggressive pulsation / stuttering)
+  constexpr double kRampStep = 0.06;
+  auto updateRamp = [kRampStep](double target, double& current) {
+    double err = target - current;
+    if (err >= kRampStep) {
+      current += kRampStep;
+    } else if (err <= -kRampStep) {
+      current -= kRampStep;
+    } else {
+      current = target;
+    }
+    // Snap cleanly to zero when stopping to eliminate micro-creeping
+    if (std::abs(target) < 1e-4 && std::abs(current) < 0.02) {
+      current = 0.0;
+    }
+  };
 
-  // Control Driving motors: FL and BL are negated (-oldspeed), FR and BR are positive
-  const double cap = std::clamp(0.5 + 0.4 * triggerR - 0.35 * triggerL, 0.1, 1.0);
-  m_FL_Drive.Set(std::clamp(-oldspeedFL / 2.0, -cap, cap));
-  m_FR_Drive.Set(std::clamp(oldspeedFR / 2.0, -cap, cap));
-  m_BL_Drive.Set(std::clamp(-oldspeedBL / 2.0, -cap, cap));
-  m_BR_Drive.Set(std::clamp(oldspeedBR / 2.0, -cap, cap));
+  updateRamp(speedFL, oldspeedFL);
+  updateRamp(speedFR, oldspeedFR);
+  updateRamp(speedBL, oldspeedBL);
+  updateRamp(speedBR, oldspeedBR);
+
+  // Speed cap with triggers:
+  // Base speed = 50%, R2 boosts up to 75% (DriveMotorsHardLimit), L2 slows down to 20%
+  const double baseSpeed = frc::SmartDashboard::GetNumber("Tank/DriveBaseSpeed", 0.50);
+  const double cap = std::clamp(baseSpeed + 0.25 * triggerR - 0.30 * triggerL, 0.20, DC::DriveMotorsHardLimit);
+
+  // BR motor inversion:
+  // On CLEO chassis, BR drive motor is mechanically inverted (kBRDriveInverted = true).
+  // Left side: FL and BL are negated (-oldspeedFL, -oldspeedBL).
+  // Right side: FR is positive (+oldspeedFR), BR is negated (-oldspeedBR) to match FR forward direction.
+  bool invertBR = frc::SmartDashboard::GetBoolean("Drive/Invert_BR_Drive", DC::kBRDriveInverted);
+
+  double cmdFL = std::clamp(-oldspeedFL * cap, -cap, cap);
+  double cmdFR = std::clamp(oldspeedFR * cap, -cap, cap);
+  double cmdBL = std::clamp(-oldspeedBL * cap, -cap, cap);
+  double cmdBR = std::clamp((invertBR ? -oldspeedBR : oldspeedBR) * cap, -cap, cap);
+
+  // When stopped, enforce true 0.0
+  if (std::abs(oldspeedFL) < 1e-4) cmdFL = 0.0;
+  if (std::abs(oldspeedFR) < 1e-4) cmdFR = 0.0;
+  if (std::abs(oldspeedBL) < 1e-4) cmdBL = 0.0;
+  if (std::abs(oldspeedBR) < 1e-4) cmdBR = 0.0;
+
+  m_FL_Drive.Set(cmdFL);
+  m_FR_Drive.Set(cmdFR);
+  m_BL_Drive.Set(cmdBL);
+  m_BR_Drive.Set(cmdBR);
+
+  frc::SmartDashboard::PutNumber("Tank/Cmd_FL", cmdFL);
+  frc::SmartDashboard::PutNumber("Tank/Cmd_FR", cmdFR);
+  frc::SmartDashboard::PutNumber("Tank/Cmd_BL", cmdBL);
+  frc::SmartDashboard::PutNumber("Tank/Cmd_BR", cmdBR);
 
   double wheelSpeedFL = (m_FL_Drive.GetVelocity().GetValueAsDouble() / 6.0375) * (M_PI * 0.0889);
   double wheelSpeedFR = (m_FR_Drive.GetVelocity().GetValueAsDouble() / 6.0375) * (M_PI * 0.0889);
@@ -568,7 +518,7 @@ void Drivetrain::UpdateSim(units::time::second_t dt) {
   simDrive(m_FL_Drive, -oldspeedFL / 2.0);
   simDrive(m_FR_Drive, oldspeedFR / 2.0);
   simDrive(m_BL_Drive, -oldspeedBL / 2.0);
-  simDrive(m_BR_Drive, oldspeedBR / 2.0);
+  simDrive(m_BR_Drive, -oldspeedBR / 2.0);
 
   const double tFL = (angleFL / M_PI) / 2.0;
   const double tFR = (angleFR / M_PI) / 2.0;
