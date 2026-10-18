@@ -53,6 +53,10 @@ class Robot : public frc::TimedRobot {
   bool GetDriverCircleButton() const;
   int GetDriverPOV() const;
 
+  // ========== Dashboard & Diagnostics Helpers (Reflect compatible) ==========
+  void UpdateDiagnostics();
+  void UpdateServoTelemetry();
+
  private:
   frc::SendableChooser<std::string> m_chooser;
   const std::string kAutoShootPreload = "Shoot Preload (Stationary)";

@@ -170,6 +170,7 @@ void Drivetrain::ConfigureMotors() {
     frc::SmartDashboard::PutNumber("Swerve/Steer_DeadbandTurns", DC::kSteerDeadbandTurns);
     frc::SmartDashboard::PutBoolean("Swerve/EnableInversionAwareness", true);
     frc::SmartDashboard::PutBoolean("Swerve/EnableHeadingLock", DC::kEnableHeadingLock);
+    frc::SmartDashboard::PutNumber("Swerve/HeadingLock_kP", straightP);
     s_dashInitialized = true;
   }
   SyncSmartDashboardPID();
@@ -182,6 +183,11 @@ void Drivetrain::SyncSmartDashboardPID() {
   const float dashS = static_cast<float>(std::clamp(frc::SmartDashboard::GetNumber("Swerve/Steer_kS", ModuleS), 0.0, 0.20));
   const float dashRamp = static_cast<float>(std::clamp(frc::SmartDashboard::GetNumber("Swerve/Steer_RampSeconds", ModuleRampSeconds), 0.0, 0.5));
   const float dashPeak = static_cast<float>(std::clamp(frc::SmartDashboard::GetNumber("Swerve/Steer_PeakOutput", ModulePeakOutput), 0.05, 1.0));
+  const float dashStraightP = static_cast<float>(frc::SmartDashboard::GetNumber("Swerve/HeadingLock_kP", straightP));
+
+  if (std::abs(dashStraightP - straightP) > 1e-5f) {
+    straightP = dashStraightP;
+  }
 
   if (std::abs(dashP - ModuleP) > 1e-4f ||
       std::abs(dashI - ModuleI) > 1e-4f ||
@@ -297,6 +303,22 @@ void Drivetrain::DisabledPeriodic() {
                         (std::abs(curBLDeg) < 3.0) &&
                         (std::abs(curBRDeg) < 3.0);
   frc::SmartDashboard::PutBoolean("Swerve/All_Wheels_Straight", wheelsStraight);
+
+  // Swerve module state arrays formatted for Reflect / AdvantageScope / Shuffleboard
+  std::vector<double> measuredStates = {
+      curFLTurns * (2.0 * M_PI), 0.0,
+      curFRTurns * (2.0 * M_PI), 0.0,
+      curBLTurns * (2.0 * M_PI), 0.0,
+      curBRTurns * (2.0 * M_PI), 0.0
+  };
+  std::vector<double> desiredStates = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  std::vector<double> moduleAnglesDeg = {curFLDeg, curFRDeg, curBLDeg, curBRDeg};
+  std::vector<double> moduleSpeedsMps = {0.0, 0.0, 0.0, 0.0};
+
+  frc::SmartDashboard::PutNumberArray("Swerve/MeasuredStates", measuredStates);
+  frc::SmartDashboard::PutNumberArray("Swerve/DesiredStates", desiredStates);
+  frc::SmartDashboard::PutNumberArray("Swerve/ModuleAngles_deg", moduleAnglesDeg);
+  frc::SmartDashboard::PutNumberArray("Swerve/ModuleSpeeds_mps", moduleSpeedsMps);
 }
 
 void Drivetrain::TestZeroAzimuth() {
@@ -418,7 +440,7 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     targetAngle = GyroValue;
     ROT = x2;
   } else if (enableHeadingLock && (std::abs(FWD) > 1e-3 || std::abs(STR) > 1e-3)) {
-    ROT = std::clamp(calcYawStraight(targetAngle, GyroValue, DC::straightP),
+    ROT = std::clamp(calcYawStraight(targetAngle, GyroValue, straightP),
                      -DC::rotationClamp, DC::rotationClamp);
   } else {
     targetAngle = GyroValue;
@@ -689,6 +711,27 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   double wheelSpeedBR = (m_BR_Drive.GetVelocity().GetValueAsDouble() / 6.0375) * (M_PI * 0.0889);
 
   odometryUpdate(FL_pos, FR_pos, BL_pos, BR_pos, wheelSpeedFL, wheelSpeedFR, wheelSpeedBL, wheelSpeedBR, GyroValue);
+
+  // Swerve module state arrays formatted for Reflect / AdvantageScope / Shuffleboard
+  std::vector<double> measuredStates = {
+      FL_pos, wheelSpeedFL,
+      FR_pos, wheelSpeedFR,
+      BL_pos, wheelSpeedBL,
+      BR_pos, wheelSpeedBR
+  };
+  std::vector<double> desiredStates = {
+      angleFL, speedFL * 4.0,
+      angleFR, speedFR * 4.0,
+      angleBL, speedBL * 4.0,
+      angleBR, speedBR * 4.0
+  };
+  std::vector<double> moduleAnglesDeg = {curFLDeg, curFRDeg, curBLDeg, curBRDeg};
+  std::vector<double> moduleSpeedsMps = {wheelSpeedFL, wheelSpeedFR, wheelSpeedBL, wheelSpeedBR};
+
+  frc::SmartDashboard::PutNumberArray("Swerve/MeasuredStates", measuredStates);
+  frc::SmartDashboard::PutNumberArray("Swerve/DesiredStates", desiredStates);
+  frc::SmartDashboard::PutNumberArray("Swerve/ModuleAngles_deg", moduleAnglesDeg);
+  frc::SmartDashboard::PutNumberArray("Swerve/ModuleSpeeds_mps", moduleSpeedsMps);
 }
 
 // Function to minimize rotation within +-PI/2
