@@ -93,17 +93,17 @@ class Drivetrain {
   double odoDeltaTime = 0;
   units::time::second_t odoLastTime = units::time::second_t(0);
 
-  // Kraken Drive motors *0
-  ctre::phoenix6::hardware::TalonFX m_FL_Drive{30};
+  // Kraken Drive motors *0 (10, 20, 30, 40)
+  ctre::phoenix6::hardware::TalonFX m_FL_Drive{DrivetrainConstants::kFLDriveId};
   ctre::phoenix6::hardware::TalonFX m_FR_Drive{DrivetrainConstants::kFRDriveId};
   ctre::phoenix6::hardware::TalonFX m_BL_Drive{DrivetrainConstants::kBLDriveId};
-  ctre::phoenix6::hardware::TalonFX m_BR_Drive{10};
+  ctre::phoenix6::hardware::TalonFX m_BR_Drive{DrivetrainConstants::kBRDriveId};
 
-  // Kraken Steering motors *1
-  ctre::phoenix6::hardware::TalonFX m_FL_Steer{31};
+  // Kraken Steering motors *1 (11, 21, 31, 41)
+  ctre::phoenix6::hardware::TalonFX m_FL_Steer{DrivetrainConstants::kFLSteerId};
   ctre::phoenix6::hardware::TalonFX m_FR_Steer{DrivetrainConstants::kFRSteerId};
   ctre::phoenix6::hardware::TalonFX m_BL_Steer{DrivetrainConstants::kBLSteerId};
-  ctre::phoenix6::hardware::TalonFX m_BR_Steer{11};
+  ctre::phoenix6::hardware::TalonFX m_BR_Steer{DrivetrainConstants::kBRSteerId};
 
   // CANcoders unwired and disabled (Tank Drive only on swerve wheels)
   // ctre::phoenix6::hardware::CANcoder CANcoderFL{32, ctre::phoenix6::CANBus{"rio"}};

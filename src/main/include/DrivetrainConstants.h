@@ -28,14 +28,13 @@ namespace DrivetrainConstants {
   inline constexpr const char* kIntakeCanBus = "intakebus";
   inline constexpr const char* kTophalfCanBus = "Tophalf";
 
-  // ---------- Swerve Module CAN IDs ----------
   // Swerve 3 (Front Left):  Drive 30 ("rio"), Steer 31 ("rio"), CANcoder 32 ("intakebus")
   // Swerve 2 (Front Right): Drive 20 ("rio"), Steer 21 ("rio"), CANcoder 22 ("rio")
-  // Swerve 4 (Back Left):   Drive 41 ("rio"), Steer 40 ("rio"), CANcoder 42 ("rio")
+  // Swerve 4 (Back Left):   Drive 40 ("rio"), Steer 41 ("rio"), CANcoder 42 ("rio")
   // Swerve 1 (Back Right):  Drive 10 ("rio"), Steer 11 ("rio"), CANcoder 12 ("rio")
   inline constexpr int kFLDriveId = 30, kFLSteerId = 31, kFLEncoderId = 32;
-  inline constexpr int kFRDriveId = 21, kFRSteerId = 20, kFREncoderId = 22;
-  inline constexpr int kBLDriveId = 41, kBLSteerId = 40, kBLEncoderId = 42;
+  inline constexpr int kFRDriveId = 20, kFRSteerId = 21, kFREncoderId = 22;
+  inline constexpr int kBLDriveId = 40, kBLSteerId = 41, kBLEncoderId = 42;
   inline constexpr int kBRDriveId = 10, kBRSteerId = 11, kBREncoderId = 12;
   inline constexpr int kPigeonId = 2;
 

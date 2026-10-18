@@ -25,9 +25,9 @@ TEST(ChimiSwerveConfigTest, CanIdsAndBusesMatchRobotTopology) {
   EXPECT_EQ(DC::kBRSteerId, 11);
   EXPECT_EQ(DC::kBREncoderId, 12);
 
-  // Swerve 2 (FR): 21, 20, 22
-  EXPECT_EQ(DC::kFRDriveId, 21);
-  EXPECT_EQ(DC::kFRSteerId, 20);
+  // Swerve 2 (FR): 20, 21, 22
+  EXPECT_EQ(DC::kFRDriveId, 20);
+  EXPECT_EQ(DC::kFRSteerId, 21);
   EXPECT_EQ(DC::kFREncoderId, 22);
 
   // Swerve 3 (FL): 30, 31, 32
@@ -35,9 +35,9 @@ TEST(ChimiSwerveConfigTest, CanIdsAndBusesMatchRobotTopology) {
   EXPECT_EQ(DC::kFLSteerId, 31);
   EXPECT_EQ(DC::kFLEncoderId, 32);
 
-  // Swerve 4 (BL): 41, 40, 42
-  EXPECT_EQ(DC::kBLDriveId, 41);
-  EXPECT_EQ(DC::kBLSteerId, 40);
+  // Swerve 4 (BL): 40, 41, 42
+  EXPECT_EQ(DC::kBLDriveId, 40);
+  EXPECT_EQ(DC::kBLSteerId, 41);
   EXPECT_EQ(DC::kBLEncoderId, 42);
 
   // Pigeon2 IMU
