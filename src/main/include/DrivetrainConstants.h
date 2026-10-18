@@ -26,7 +26,7 @@ namespace DrivetrainConstants {
   //   "Tophalf"   = Tophalf CANivore (Feeders 55/57, Indexer 50, Outtake 60/61)
   inline constexpr const char* kCanBus = "rio";
   inline constexpr const char* kIntakeCanBus = "intakebus";
-  // inline constexpr const char* kTophalfCanBus = "Tophalf";
+  inline constexpr const char* kTophalfCanBus = "Tophalf";
 
   // ---------- Swerve Module CAN IDs ----------
   // Swerve 3 (Front Left):  Drive 30 ("rio"), Steer 31 ("rio"), CANcoder 32 ("intakebus")
@@ -44,14 +44,18 @@ namespace DrivetrainConstants {
   inline constexpr int kServoChannel2 = 2;
   inline constexpr int kServoChannel3 = 3;
 
-  // ---------- Mechanism Motor CAN IDs (Commented out - Swerve only) ----------
-  // inline constexpr int kIndexerMotorId = 50;
-  // inline constexpr int kIntakeMotorId = 54;
-  // inline constexpr int kBottomFeederMotorId = 55;
-  // inline constexpr int kRollerbedMotorId = 56;
-  // inline constexpr int kTopFeederMotorId = 57;
-  // inline constexpr int kOuttakeLeftMotorId = 60;
-  // inline constexpr int kOuttakeRightMotorId = 61;
+  // ---------- Mechanism Motor CAN IDs ("Tophalf" and "intakebus") ----------
+  inline constexpr int kIndexerMotorId = 50;
+  inline constexpr int kIntakeMotorId = 54;
+  inline constexpr int kBottomFeederMotorId = 55;
+  inline constexpr int kRollerbedMotorId = 56;
+  inline constexpr int kTopFeederMotorId = 57;
+  inline constexpr int kOuttakeLeftMotorId = 60;
+  inline constexpr int kOuttakeRightMotorId = 61;
+
+  // ---------- Top Half Mechanism Speeds ----------
+  inline constexpr double kOuttakeSpeed = 0.70;
+  inline constexpr double kFeederSpeed = 0.70;
 
   // ---------- Robot dimensions (wheel center to wheel center, meters) ----------
   // ChimiSwerve Section 2.1b (Page 13): L = wheelbase, W = trackwidth, R = sqrt(L^2 + W^2)
@@ -84,7 +88,7 @@ namespace DrivetrainConstants {
   inline constexpr double kSteerPeakOutput = 1.0;
   inline constexpr double SteeringRampRateSeconds = 0.01;
   inline constexpr double kSteerCurrentLimit = 40.0;      ///< A (ChimiSwerve Sec 3.6 brownout protection)
-  inline constexpr double kSteerDeadbandTurns = 0.10;     ///< 0.03 turns (3%) deadband to negate the ~3% wobble
+  inline constexpr double kSteerDeadbandTurns = 0.012;    ///< 0.012 turns (4.3 deg) deadband to prevent wobble while keeping modules tightly synchronized
   inline constexpr double sensorToMechanismRatio = 1.0;   ///< CANcoder turns per wheel turn
   inline constexpr double rotorToSensorRatio = 18.0;      ///< steer motor turns per CANcoder turn (18:1)
 

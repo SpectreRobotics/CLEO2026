@@ -147,11 +147,25 @@ void Robot::TeleopPeriodic() {
   }
   frc::SmartDashboard::PutBoolean("Drive/IsReversed", reverseForward);
 
-  // Drive mode: default is RobotCentric; only FieldCentric when explicitly selected and gyro connected
-  bool wantFieldFromChooser = (m_driveModeChooser.GetSelected() == "FieldCentric");
-  bool wantFieldFromToggle = frc::SmartDashboard::GetBoolean("Drive/FieldCentric", false);
-  FieldCentric = (wantFieldFromChooser || wantFieldFromToggle) && m_pigeon.IsConnected();
+  // Drive mode (ChimiSwerve Sec 2.1a & Sec 3.7):
+  // Can be toggled via SmartDashboard "Drive Mode" chooser or "Drive/FieldCentric" checkbox.
+  // Automatically falls back to RobotCentric if Pigeon2 gyro is disconnected (ChimiSwerve Sec 3.7, Page 41).
+  const bool wantFieldFromChooser = (m_driveModeChooser.GetSelected() == "FieldCentric");
+  const bool wantFieldFromToggle = frc::SmartDashboard::GetBoolean("Drive/FieldCentric", m_wantFieldCentric);
+  if (wantFieldFromChooser != m_lastChooserField) {
+    m_wantFieldCentric = wantFieldFromChooser;
+    m_lastChooserField = wantFieldFromChooser;
+    m_lastToggleField = m_wantFieldCentric;
+    frc::SmartDashboard::PutBoolean("Drive/FieldCentric", m_wantFieldCentric);
+  } else if (wantFieldFromToggle != m_lastToggleField) {
+    m_wantFieldCentric = wantFieldFromToggle;
+    m_lastToggleField = wantFieldFromToggle;
+  }
+
+  const bool gyroConnected = m_pigeon.IsConnected();
+  FieldCentric = m_wantFieldCentric && gyroConnected;
   frc::SmartDashboard::PutBoolean("Drive/IsFieldCentric", FieldCentric);
+  frc::SmartDashboard::PutBoolean("Gyro/FaultFallbackToRobotCentric", m_wantFieldCentric && !gyroConnected);
 
   // Telemetry for verifying driver inputs live on SmartDashboard
   int activePort = GetDriverPort();
@@ -168,39 +182,40 @@ void Robot::TeleopPeriodic() {
 
   m_swerve.Update(x, y, x2, GyroValue, triggerL, triggerR, FieldCentric);
 
-  // ========== Mechanism Controls (Commented out - Swerve only) ==========
-  // // Shooting / Outtake control using right trigger (R2)
-  // if (triggerR > 0.05) {
-  //   BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
-  //   TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
-  //   OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
-  //   OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{-0.70});
-  // } else {
-  //   BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
-  //   TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
-  //   OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
-  //   OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
-  // }
-  //
-  // // Intake control using left trigger (L2)
-  // if (triggerL > 0.05) {
-  //   IntakeMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
-  //   RollerbedMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
-  // } else {
-  //   IntakeMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
-  //   RollerbedMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
-  // }
-  //
-  // // Shared indexer control, runs if either trigger is pressed
-  // if (triggerR > 0.05 || triggerL > 0.05) {
-  //   IndexerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.70});
-  // } else {
-  //   IndexerMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
-  // }
+  // ========== Top Half Mechanism Controls (PS5 Right Bumper R1) ==========
+  // When R1 bumper is held:
+  //   - OuttakeLeft and OuttakeRight spin (OuttakeRight inverted)
+  //   - BottomFeeder and TopFeeder spin opposite directions (TopFeeder inverted)
+  bool topHalfBumper = GetDriverRightBumper();
+  frc::SmartDashboard::PutBoolean("TopHalf/BumperHeld", topHalfBumper);
+
+  if (topHalfBumper) {
+    OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{DrivetrainConstants::kOuttakeSpeed});
+    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{-DrivetrainConstants::kOuttakeSpeed});
+    BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{DrivetrainConstants::kFeederSpeed});
+    TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{-DrivetrainConstants::kFeederSpeed});
+    frc::SmartDashboard::PutNumber("TopHalf/OuttakeLeftDuty", DrivetrainConstants::kOuttakeSpeed);
+    frc::SmartDashboard::PutNumber("TopHalf/OuttakeRightDuty", -DrivetrainConstants::kOuttakeSpeed);
+    frc::SmartDashboard::PutNumber("TopHalf/BottomFeederDuty", DrivetrainConstants::kFeederSpeed);
+    frc::SmartDashboard::PutNumber("TopHalf/TopFeederDuty", -DrivetrainConstants::kFeederSpeed);
+  } else {
+    OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+    frc::SmartDashboard::PutNumber("TopHalf/OuttakeLeftDuty", 0.0);
+    frc::SmartDashboard::PutNumber("TopHalf/OuttakeRightDuty", 0.0);
+    frc::SmartDashboard::PutNumber("TopHalf/BottomFeederDuty", 0.0);
+    frc::SmartDashboard::PutNumber("TopHalf/TopFeederDuty", 0.0);
+  }
 }
 
 void Robot::DisabledInit() {
   m_swerve.DisabledInit();
+  BottomFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  TopFeederMotor.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  OuttakeLeft.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
+  OuttakeRight.SetControl(ctre::phoenix6::controls::DutyCycleOut{0.0});
 }
 
 void Robot::DisabledPeriodic() {
@@ -281,10 +296,28 @@ double Robot::GetDriverRightTrigger() const {
   return m_ps5Controller0.GetR2Axis();
 }
 
+bool Robot::GetDriverRightBumper() const {
+  int port = GetDriverPort();
+  if (port == 1) return m_ps5Controller1.GetR1Button();
+  return m_ps5Controller0.GetR1Button();
+}
+
 bool Robot::GetDriverRightBumperPressed() {
   int port = GetDriverPort();
   if (port == 1) return m_ps5Controller1.GetR1ButtonPressed();
   return m_ps5Controller0.GetR1ButtonPressed();
+}
+
+bool Robot::GetDriverLeftBumper() const {
+  int port = GetDriverPort();
+  if (port == 1) return m_ps5Controller1.GetL1Button();
+  return m_ps5Controller0.GetL1Button();
+}
+
+bool Robot::GetDriverLeftBumperPressed() {
+  int port = GetDriverPort();
+  if (port == 1) return m_ps5Controller1.GetL1ButtonPressed();
+  return m_ps5Controller0.GetL1ButtonPressed();
 }
 
 bool Robot::GetDriverResetGyroPressed() {

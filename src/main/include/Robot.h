@@ -16,6 +16,7 @@
 #include <ctre/phoenix6/Pigeon2.hpp>
 #include <ctre/phoenix6/TalonFX.hpp>
 #include <ctre/phoenix6/CANcoder.hpp>
+#include <ctre/phoenix6/controls/DutyCycleOut.hpp>
 #include <rev/ServoHub.h>
 #include <rev/ServoChannel.h>
 
@@ -43,7 +44,10 @@ class Robot : public frc::TimedRobot {
   double GetDriverRightX() const;
   double GetDriverLeftTrigger() const;
   double GetDriverRightTrigger() const;
+  bool GetDriverRightBumper() const;
   bool GetDriverRightBumperPressed();
+  bool GetDriverLeftBumper() const;
+  bool GetDriverLeftBumperPressed();
   bool GetDriverResetGyroPressed();
   bool GetDriverCrossButton() const;
   bool GetDriverCircleButton() const;
@@ -78,6 +82,9 @@ class Robot : public frc::TimedRobot {
   double triggerL = 0.0;
   double triggerR = 0.0;
   bool FieldCentric = false;
+  bool m_wantFieldCentric = false;
+  bool m_lastChooserField = false;
+  bool m_lastToggleField = false;
 
   frc::SendableChooser<std::string> m_driveModeChooser;
   frc::SendableChooser<std::string> m_orientationChooser;
@@ -88,20 +95,19 @@ class Robot : public frc::TimedRobot {
   rev::servohub::ServoChannel& m_servoChannel2 = m_servoHub.GetServoChannel(rev::servohub::ServoChannel::ChannelId::kChannelId2);
   rev::servohub::ServoChannel& m_servoChannel3 = m_servoHub.GetServoChannel(rev::servohub::ServoChannel::ChannelId::kChannelId3);
 
-  // ========== Mechanism Motors (Commented out - Swerve only) ==========
-  // // "Tophalf" CAN bus: Feeders, Indexer, Outtake
-  // ctre::phoenix6::hardware::TalonFX BottomFeederMotor{DrivetrainConstants::kBottomFeederMotorId,
-  //                                                     ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
-  // ctre::phoenix6::hardware::TalonFX TopFeederMotor{DrivetrainConstants::kTopFeederMotorId,
-  //                                                  ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
+  // ========== Top Half Mechanism Motors ("Tophalf" CAN bus) ==========
+  ctre::phoenix6::hardware::TalonFX BottomFeederMotor{DrivetrainConstants::kBottomFeederMotorId,
+                                                      ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
+  ctre::phoenix6::hardware::TalonFX TopFeederMotor{DrivetrainConstants::kTopFeederMotorId,
+                                                   ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
+  ctre::phoenix6::hardware::TalonFX OuttakeLeft{DrivetrainConstants::kOuttakeLeftMotorId,
+                                                ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
+  ctre::phoenix6::hardware::TalonFX OuttakeRight{DrivetrainConstants::kOuttakeRightMotorId,
+                                                 ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
+
+  // // "Tophalf" indexer & "intakebus" intake (commented out until needed)
   // ctre::phoenix6::hardware::TalonFX IndexerMotor{DrivetrainConstants::kIndexerMotorId,
   //                                                ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
-  // ctre::phoenix6::hardware::TalonFX OuttakeLeft{DrivetrainConstants::kOuttakeLeftMotorId,
-  //                                               ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
-  // ctre::phoenix6::hardware::TalonFX OuttakeRight{DrivetrainConstants::kOuttakeRightMotorId,
-  //                                                ctre::phoenix6::CANBus{DrivetrainConstants::kTophalfCanBus}};
-  //
-  // // "intakebus" CAN bus: Intake and Rollerbed
   // ctre::phoenix6::hardware::TalonFX IntakeMotor{DrivetrainConstants::kIntakeMotorId,
   //                                               ctre::phoenix6::CANBus{DrivetrainConstants::kIntakeCanBus}};
   // ctre::phoenix6::hardware::TalonFX RollerbedMotor{DrivetrainConstants::kRollerbedMotorId,

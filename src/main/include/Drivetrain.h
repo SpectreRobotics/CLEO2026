@@ -119,21 +119,21 @@ class Drivetrain {
   ctre::phoenix6::configs::TalonFXConfiguration configBL{};
   ctre::phoenix6::configs::TalonFXConfiguration configBR{};
 
-  float ModuleP = 1.0f;
+  float ModuleP = 2.0f;
   float ModuleI = 0.0f;
-  float ModuleD = 1.5f;
+  float ModuleD = 0.05f;
   float ModuleS = 0.0f;
-  float ModuleRampSeconds = 0.001f;
-  float ModulePeakOutput = 0.10f;
+  float ModuleRampSeconds = 0.01f;
+  float ModulePeakOutput = 0.30f;
 
   // Dedicated PID gains for Swerve 3 if using intakebus software fallback:
   // float FL_P = 1.2f;
   // float FL_I = 0.0f;
   // float FL_D = 0.4f;
 
-  float straightP = 0.0;
-  float straightI = 0.0;
-  float straightD = 0.0;
+  float straightP = 0.004f;
+  float straightI = 0.0f;
+  float straightD = 0.0f;
 
   const double L = 0.5461;
   const double W = 0.5461;
@@ -143,6 +143,9 @@ class Drivetrain {
   double speedFL = 0, speedFR = 0, speedBL = 0, speedBR = 0;
 
   double oldspeedFL = 0, oldspeedFR = 0, oldspeedBL = 0, oldspeedBR = 0;
+  double m_contTargetFL = 0, m_contTargetFR = 0, m_contTargetBL = 0, m_contTargetBR = 0;
+  bool m_flipFL = false, m_flipFR = false, m_flipBL = false, m_flipBR = false;
+  bool m_wasDriving = false;
   bool m_steerActiveFL = false, m_steerActiveFR = false, m_steerActiveBL = false, m_steerActiveBR = false;
 
   units::time::second_t lastTime = units::time::second_t(0);
