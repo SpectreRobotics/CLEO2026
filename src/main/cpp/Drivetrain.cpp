@@ -322,35 +322,10 @@ void Drivetrain::DisabledPeriodic() {
 }
 
 void Drivetrain::TestZeroAzimuth() {
-  SyncSmartDashboardPID();
-  ctre::phoenix6::controls::PositionDutyCycle steerPos{0_tr};
-  const double curRawFL = m_FL_Steer.GetPosition().GetValueAsDouble();
-  const double curRawFR = m_FR_Steer.GetPosition().GetValueAsDouble();
-  const double curRawBL = m_BL_Steer.GetPosition().GetValueAsDouble();
-  const double curRawBR = m_BR_Steer.GetPosition().GetValueAsDouble();
-
-  m_FL_Steer.SetControl(steerPos.WithPosition(units::angle::turn_t{curRawFL + std::remainder(kSwerve3FLZeroTurns - curRawFL, 1.0)}));
-  m_FR_Steer.SetControl(steerPos.WithPosition(units::angle::turn_t{curRawFR + std::remainder(kSwerve2FRZeroTurns - curRawFR, 1.0)}));
-  m_BL_Steer.SetControl(steerPos.WithPosition(units::angle::turn_t{curRawBL + std::remainder(kSwerve4BLZeroTurns - curRawBL, 1.0)}));
-  m_BR_Steer.SetControl(steerPos.WithPosition(units::angle::turn_t{curRawBR + std::remainder(kSwerve1BRZeroTurns - curRawBR, 1.0)}));
-
-  // --- Commented out: Old TestZeroAzimuth when CANcoder 32 was on "intakebus" ---
-  // const double curZeroedFL = std::remainder(GetCANcoderFLTurns() - kSwerve3FLZeroTurns, 1.0);
-  // const double errFL = std::remainder(0.0 - curZeroedFL, 1.0);
-  // if (std::abs(errFL) > DC::kSteerDeadbandTurns) {
-  //   const double flWheelVel = m_FL_Steer.GetVelocity().GetValueAsDouble() / 18.0;
-  //   const double pTerm = errFL * (static_cast<double>(FL_P) * 2.0);
-  //   const double dTerm = -flWheelVel * (0.10 * static_cast<double>(FL_D));
-  //   double flDuty = pTerm + dTerm;
-  //   if ((errFL > 0.0 && flDuty < 0.05) || (errFL < 0.0 && flDuty > -0.05)) {
-  //     flDuty = std::copysign(0.05, errFL);
-  //   }
-  //   const double rampDownCap = std::clamp(std::abs(errFL) * 3.5, 0.08, 0.45);
-  //   m_FL_Steer.Set(std::clamp(flDuty, -rampDownCap, rampDownCap));
-  // } else {
-  //   m_FL_Steer.Set(0.0);
-  // }
-
+  m_FL_Steer.Set(0.0);
+  m_FR_Steer.Set(0.0);
+  m_BL_Steer.Set(0.0);
+  m_BR_Steer.Set(0.0);
   m_FL_Drive.Set(0.0);
   m_FR_Drive.Set(0.0);
   m_BL_Drive.Set(0.0);
@@ -358,11 +333,10 @@ void Drivetrain::TestZeroAzimuth() {
 }
 
 void Drivetrain::TestRotateModules(double speed) {
-  ctre::phoenix6::controls::DutyCycleOut duty{speed};
-  m_FL_Steer.SetControl(duty);
-  m_FR_Steer.SetControl(duty);
-  m_BL_Steer.SetControl(duty);
-  m_BR_Steer.SetControl(duty);
+  m_FL_Steer.Set(0.0);
+  m_FR_Steer.Set(0.0);
+  m_BL_Steer.Set(0.0);
+  m_BR_Steer.Set(0.0);
   m_FL_Drive.Set(0.0);
   m_FR_Drive.Set(0.0);
   m_BL_Drive.Set(0.0);
@@ -373,7 +347,6 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
                         double triggerL, double triggerR, bool FieldCentric,
                         bool isTankDrive, bool holdSteer) {
   SyncSmartDashboardPID();
-  const double deadbandTurns = frc::SmartDashboard::GetNumber("Swerve/Steer_DeadbandTurns", DC::kSteerDeadbandTurns);
 
   // Live Swerve 3 (CAN 31) diagnostics while driving
   frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_Temp_C", m_FL_Steer.GetDeviceTemp().GetValueAsDouble());
@@ -399,268 +372,30 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
     return;
   }
 
-  // Get continuous raw and zeroed wheel positions in turns for all 4 swerve modules
-  const double curRawFL = m_FL_Steer.GetPosition().GetValueAsDouble();
-  const double curRawFR = m_FR_Steer.GetPosition().GetValueAsDouble();
-  const double curRawBL = m_BL_Steer.GetPosition().GetValueAsDouble();
-  const double curRawBR = m_BR_Steer.GetPosition().GetValueAsDouble();
+  // Swerve fully disabled: Steer motors permanently commanded 0.0 power
+  // In Brake mode, modules stay locked mechanically where manually aligned
+  m_FL_Steer.Set(0.0);
+  m_FR_Steer.Set(0.0);
+  m_BL_Steer.Set(0.0);
+  m_BR_Steer.Set(0.0);
 
-  const double curContFL = curRawFL - kSwerve3FLZeroTurns;
-  const double curContFR = curRawFR - kSwerve2FRZeroTurns;
-  const double curContBL = curRawBL - kSwerve4BLZeroTurns;
-  const double curContBR = curRawBR - kSwerve1BRZeroTurns;
+  // ========== TANK DRIVE ONLY (Swerve Fully Disabled) ==========
+  // Forward/backward throttle from Left Y (y)
+  // Turn from Right Stick X (x2) or Left Stick X (x) if right stick centered
+  double throttle = y;
+  double turn = (std::abs(x2) > 0.05) ? x2 : x;
+  auto [leftSpeed, rightSpeed] = TankDriveKinematics(throttle, turn);
 
-  // const double curZeroedFL = std::remainder(GetCANcoderFLTurns() - kSwerve3FLZeroTurns, 1.0);
-  const double curZeroedFL = std::remainder(curContFL, 1.0);
-  const double curZeroedFR = std::remainder(curContFR, 1.0);
-  const double curZeroedBL = std::remainder(curContBL, 1.0);
-  const double curZeroedBR = std::remainder(curContBR, 1.0);
+  speedFL = leftSpeed;
+  speedBL = leftSpeed;
+  speedFR = rightSpeed;
+  speedBR = rightSpeed;
 
-  double FL_pos = curZeroedFL * (2.0 * M_PI);
-  double FR_pos = curZeroedFR * (2.0 * M_PI);
-  double BL_pos = curZeroedBL * (2.0 * M_PI);
-  double BR_pos = curZeroedBR * (2.0 * M_PI);
+  frc::SmartDashboard::PutNumber("Tank/LeftSpeed", leftSpeed);
+  frc::SmartDashboard::PutNumber("Tank/RightSpeed", rightSpeed);
+  frc::SmartDashboard::PutBoolean("Drive/IsTankDrive", true);
 
-  double targetTurnsFL = 0.0;
-  double targetTurnsFR = 0.0;
-  double targetTurnsBL = 0.0;
-  double targetTurnsBR = 0.0;
-
-  if (isTankDrive) {
-    // ========== TANK DRIVE MODE ==========
-    // All 4 steer modules are steered straight forward (0 degrees = 0 turns)
-    targetTurnsFL = 0.0;
-    targetTurnsFR = 0.0;
-    targetTurnsBL = 0.0;
-    targetTurnsBR = 0.0;
-
-    double throttle = y;
-    // Turn from right stick X (x2) or left stick X (x) if right stick centered
-    double turn = (std::abs(x2) > 0.05) ? x2 : x;
-    auto [leftSpeed, rightSpeed] = TankDriveKinematics(throttle, turn);
-
-    speedFL = leftSpeed;
-    speedBL = leftSpeed;
-    speedFR = rightSpeed;
-    speedBR = rightSpeed;
-
-    frc::SmartDashboard::PutNumber("Tank/LeftSpeed", leftSpeed);
-    frc::SmartDashboard::PutNumber("Tank/RightSpeed", rightSpeed);
-  } else {
-    // ========== SWERVE DRIVE MODE ==========
-    double STR = x;
-    double FWD = y;
-
-    // Field Centric // offsetting vectors by the gyro angle
-    if (FieldCentric == true) {
-      double temp = FWD * std::cos(GyroValue * M_PI / 180.0) + STR * std::sin(GyroValue * M_PI / 180.0);
-      STR = -FWD * std::sin(GyroValue * M_PI / 180.0) + STR * std::cos(GyroValue * M_PI / 180.0);
-      FWD = temp;
-    }
-
-    if (std::abs(ROT) < 0.05) {
-      // Pure translation: all 4 modules mirror each other identically
-      double unifiedAngle = std::atan2(STR, FWD);
-      double unifiedSpeed = std::min(1.0, std::hypot(STR, FWD));
-
-      angleFL = unifiedAngle;
-      angleFR = unifiedAngle;
-      angleBL = unifiedAngle;
-      angleBR = unifiedAngle;
-
-      speedFL = unifiedSpeed;
-      speedFR = unifiedSpeed;
-      speedBL = unifiedSpeed;
-      speedBR = unifiedSpeed;
-    } else {
-      // Swerve Inverse Kinematics (forward/backward, strafe, diagonals, and rotation):
-      const ModuleStates states = InverseKinematics(FWD, STR, ROT);
-
-      angleFL = states.waFL;
-      angleFR = states.waFR;
-      angleBL = states.waBL;
-      angleBR = states.waBR;
-
-      speedFL = states.wsFL;
-      speedFR = states.wsFR;
-      speedBL = states.wsBL;
-      speedBR = states.wsBR;
-    }
-
-    targetTurnsFL = angleFL / (2.0 * M_PI);
-    targetTurnsFR = angleFR / (2.0 * M_PI);
-    targetTurnsBL = angleBL / (2.0 * M_PI);
-    targetTurnsBR = angleBR / (2.0 * M_PI);
-  }
-  ctre::phoenix6::controls::PositionDutyCycle steerm_speedFL{0_tr};
-  ctre::phoenix6::controls::PositionDutyCycle steerm_speedFR{0_tr};
-  ctre::phoenix6::controls::PositionDutyCycle steerm_speedBL{0_tr};
-  ctre::phoenix6::controls::PositionDutyCycle steerm_speedBR{0_tr};
-
-  steerm_speedFL.Slot = 0;
-  steerm_speedFR.Slot = 0;
-  steerm_speedBL.Slot = 0;
-  steerm_speedBR.Slot = 0;
-
-  // Continuous unwrapped target tracking with synchronized wrap direction and 0.65-turn hysteresis:
-  // Prevents modules from starting right and then deciding to go left when the stick crosses +-180 deg,
-  // and keeps all 4 modules rotating in the same direction on near-180 deg reversals (both from rest and in motion).
-  if (!m_wasDriving) {
-    m_contTargetFL = curContFL;
-    m_contTargetFR = curContFR;
-    m_contTargetBL = curContBL;
-    m_contTargetBR = curContBR;
-    m_wasDriving = true;
-  }
-
-  double deltaFL = std::remainder(targetTurnsFL - m_contTargetFL, 1.0);
-  double deltaFR = std::remainder(targetTurnsFR - m_contTargetFR, 1.0);
-  double deltaBL = std::remainder(targetTurnsBL - m_contTargetBL, 1.0);
-  double deltaBR = std::remainder(targetTurnsBR - m_contTargetBR, 1.0);
-
-  const double avgDelta = (deltaFL + deltaFR + deltaBL + deltaBR) * 0.25;
-  const double syncSign = (avgDelta >= 0.0) ? 1.0 : -1.0;
-  auto syncNearHalfTurn = [syncSign](double& d) {
-    if (std::abs(d) > 0.38 && (d * syncSign) < 0.0) {
-      d += syncSign;
-    }
-  };
-  syncNearHalfTurn(deltaFL);
-  syncNearHalfTurn(deltaFR);
-  syncNearHalfTurn(deltaBL);
-  syncNearHalfTurn(deltaBR);
-
-  m_contTargetFL += deltaFL;
-  m_contTargetFR += deltaFR;
-  m_contTargetBL += deltaBL;
-  m_contTargetBR += deltaBR;
-
-  auto clampContTarget = [](double& contTarget, double curCont) {
-    if (contTarget - curCont > 0.65) {
-      contTarget -= 1.0;
-    } else if (contTarget - curCont < -0.65) {
-      contTarget += 1.0;
-    }
-  };
-  clampContTarget(m_contTargetFL, curContFL);
-  clampContTarget(m_contTargetFR, curContFR);
-  clampContTarget(m_contTargetBL, curContBL);
-  clampContTarget(m_contTargetBR, curContBR);
-
-  const double errFL = m_contTargetFL - curContFL;
-  const double errFR = m_contTargetFR - curContFR;
-  const double errBL = m_contTargetBL - curContBL;
-  const double errBR = m_contTargetBR - curContBR;
-
-  const double curFLDeg = curZeroedFL * 360.0;
-  const double curFRDeg = curZeroedFR * 360.0;
-  const double curBLDeg = curZeroedBL * 360.0;
-  const double curBRDeg = curZeroedBR * 360.0;
-
-  const double errFLDeg = errFL * 360.0;
-  const double errFRDeg = errFR * 360.0;
-  const double errBLDeg = errBL * 360.0;
-  const double errBRDeg = errBR * 360.0;
-
-  // Live wheel angles in degrees (0 deg = straight ahead)
-  frc::SmartDashboard::PutNumber("Swerve/FL_Angle_Deg", curFLDeg);
-  frc::SmartDashboard::PutNumber("Swerve/FR_Angle_Deg", curFRDeg);
-  frc::SmartDashboard::PutNumber("Swerve/BL_Angle_Deg", curBLDeg);
-  frc::SmartDashboard::PutNumber("Swerve/BR_Angle_Deg", curBRDeg);
-
-  // Target angles in degrees
-  frc::SmartDashboard::PutNumber("Swerve/FL_Target_Deg", targetTurnsFL * 360.0);
-  frc::SmartDashboard::PutNumber("Swerve/FR_Target_Deg", targetTurnsFR * 360.0);
-  frc::SmartDashboard::PutNumber("Swerve/BL_Target_Deg", targetTurnsBL * 360.0);
-  frc::SmartDashboard::PutNumber("Swerve/BR_Target_Deg", targetTurnsBR * 360.0);
-
-  // Alignment errors in degrees
-  frc::SmartDashboard::PutNumber("Swerve/FL_Error_Deg", errFLDeg);
-  frc::SmartDashboard::PutNumber("Swerve/FR_Error_Deg", errFRDeg);
-  frc::SmartDashboard::PutNumber("Swerve/BL_Error_Deg", errBLDeg);
-  frc::SmartDashboard::PutNumber("Swerve/BR_Error_Deg", errBRDeg);
-
-  // Wheel straight alignment indicator (|angle| < 3 degrees)
-  bool wheelsStraight = (std::abs(curFLDeg) < 3.0) &&
-                        (std::abs(curFRDeg) < 3.0) &&
-                        (std::abs(curBLDeg) < 3.0) &&
-                        (std::abs(curBRDeg) < 3.0);
-  frc::SmartDashboard::PutBoolean("Swerve/All_Wheels_Straight", wheelsStraight);
-
-  // Raw CANcoder absolute readings (turns)
-  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FL_RawTurns", CANcoderFL.GetAbsolutePosition().GetValueAsDouble());
-  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FR_RawTurns", CANcoderFR.GetAbsolutePosition().GetValueAsDouble());
-  frc::SmartDashboard::PutNumber("Swerve/CANcoder_BL_RawTurns", CANcoderBL.GetAbsolutePosition().GetValueAsDouble());
-  frc::SmartDashboard::PutNumber("Swerve/CANcoder_BR_RawTurns", CANcoderBR.GetAbsolutePosition().GetValueAsDouble());
-
-  // Turns telemetry
-  frc::SmartDashboard::PutNumber("Swerve/TargetTurns", targetTurnsFL);
-  frc::SmartDashboard::PutNumber("Swerve/FL_ErrorTurns", errFL);
-  frc::SmartDashboard::PutNumber("Swerve/FR_ErrorTurns", errFR);
-  frc::SmartDashboard::PutNumber("Swerve/BL_ErrorTurns", errBL);
-  frc::SmartDashboard::PutNumber("Swerve/BR_ErrorTurns", errBR);
-  frc::SmartDashboard::PutNumber("Swerve/FL_ZeroedTurns", curZeroedFL);
-  frc::SmartDashboard::PutNumber("Swerve/FR_ZeroedTurns", curZeroedFR);
-  frc::SmartDashboard::PutNumber("Swerve/BL_ZeroedTurns", curZeroedBL);
-  frc::SmartDashboard::PutNumber("Swerve/BR_ZeroedTurns", curZeroedBR);
-
-  // Tight hysteresis deadband: stop at deadbandTurns (0.012 = 4.3 deg)
-  // and re-engage if error exceeds deadbandTurns + 0.008 (7.2 deg).
-  const double stopBand = deadbandTurns;
-  const double startBand = deadbandTurns + 0.008;
-
-  if (std::abs(errFL) > startBand) m_steerActiveFL = true;
-  else if (std::abs(errFL) <= stopBand) m_steerActiveFL = false;
-
-  if (std::abs(errFR) > startBand) m_steerActiveFR = true;
-  else if (std::abs(errFR) <= stopBand) m_steerActiveFR = false;
-
-  if (std::abs(errBL) > startBand) m_steerActiveBL = true;
-  else if (std::abs(errBL) <= stopBand) m_steerActiveBL = false;
-
-  if (std::abs(errBR) > startBand) m_steerActiveBR = true;
-  else if (std::abs(errBR) <= stopBand) m_steerActiveBR = false;
-
-  if (isTankDrive && !holdSteer) {
-    m_FL_Steer.Set(0.0);
-    m_FR_Steer.Set(0.0);
-    m_BL_Steer.Set(0.0);
-    m_BR_Steer.Set(0.0);
-  } else {
-    if (deadbandTurns <= 0.0 || m_steerActiveFL) {
-      m_FL_Steer.SetControl(steerm_speedFL.WithPosition(units::angle::turn_t{curRawFL + errFL}));
-    } else {
-      m_FL_Steer.Set(0.0);
-    }
-
-    if (deadbandTurns <= 0.0 || m_steerActiveFR) {
-      m_FR_Steer.SetControl(steerm_speedFR.WithPosition(units::angle::turn_t{curRawFR + errFR}));
-    } else {
-      m_FR_Steer.Set(0.0);
-    }
-
-    if (deadbandTurns <= 0.0 || m_steerActiveBL) {
-      m_BL_Steer.SetControl(steerm_speedBL.WithPosition(units::angle::turn_t{curRawBL + errBL}));
-    } else {
-      m_BL_Steer.Set(0.0);
-    }
-
-    if (deadbandTurns <= 0.0 || m_steerActiveBR) {
-      m_BR_Steer.SetControl(steerm_speedBR.WithPosition(units::angle::turn_t{curRawBR + errBR}));
-    } else {
-      m_BR_Steer.Set(0.0);
-    }
-  }
-
-  // Synchronize drive output with module steering alignment so drive wheels do not
-  // push the robot sideways while the modules are still turning toward their target angle:
-  const double maxAbsErrTurns = std::max({std::abs(errFL), std::abs(errFR), std::abs(errBL), std::abs(errBR)});
-  const double alignScale = std::max(0.0, std::cos(std::min(maxAbsErrTurns, 0.25) * 2.0 * M_PI));
-  speedFL *= alignScale;
-  speedFR *= alignScale;
-  speedBL *= alignScale;
-  speedBR *= alignScale;
-
+  // Smooth acceleration ramps
   double speedFLEr = speedFL - oldspeedFL;
   oldspeedFL += (speedFLEr >= 0.07) ? 0.07 : (speedFLEr <= -0.07) ? -0.07 : speedFLEr;
   double speedFREr = speedFR - oldspeedFR;
@@ -682,22 +417,22 @@ void Drivetrain::Update(double x, double y, double x2, double GyroValue,
   double wheelSpeedBL = (m_BL_Drive.GetVelocity().GetValueAsDouble() / 6.0375) * (M_PI * 0.0889);
   double wheelSpeedBR = (m_BR_Drive.GetVelocity().GetValueAsDouble() / 6.0375) * (M_PI * 0.0889);
 
-  odometryUpdate(FL_pos, FR_pos, BL_pos, BR_pos, wheelSpeedFL, wheelSpeedFR, wheelSpeedBL, wheelSpeedBR, GyroValue);
+  odometryUpdate(0.0, 0.0, 0.0, 0.0, wheelSpeedFL, wheelSpeedFR, wheelSpeedBL, wheelSpeedBR, GyroValue);
 
-  // Swerve module state arrays formatted for Reflect / AdvantageScope / Shuffleboard
+  // Swerve module state arrays formatted for Reflect / AdvantageScope
   std::vector<double> measuredStates = {
-      FL_pos, wheelSpeedFL,
-      FR_pos, wheelSpeedFR,
-      BL_pos, wheelSpeedBL,
-      BR_pos, wheelSpeedBR
+      0.0, wheelSpeedFL,
+      0.0, wheelSpeedFR,
+      0.0, wheelSpeedBL,
+      0.0, wheelSpeedBR
   };
   std::vector<double> desiredStates = {
-      angleFL, speedFL * 4.0,
-      angleFR, speedFR * 4.0,
-      angleBL, speedBL * 4.0,
-      angleBR, speedBR * 4.0
+      0.0, speedFL * 4.0,
+      0.0, speedFR * 4.0,
+      0.0, speedBL * 4.0,
+      0.0, speedBR * 4.0
   };
-  std::vector<double> moduleAnglesDeg = {curFLDeg, curFRDeg, curBLDeg, curBRDeg};
+  std::vector<double> moduleAnglesDeg = {0.0, 0.0, 0.0, 0.0};
   std::vector<double> moduleSpeedsMps = {wheelSpeedFL, wheelSpeedFR, wheelSpeedBL, wheelSpeedBR};
 
   frc::SmartDashboard::PutNumberArray("Swerve/MeasuredStates", measuredStates);
