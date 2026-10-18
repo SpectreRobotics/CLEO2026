@@ -34,7 +34,7 @@ namespace DrivetrainConstants {
   // Swerve 4 (Back Left):   Drive 40 ("rio"), Steer 41 ("rio"), CANcoder 42 ("rio")
   // Swerve 1 (Back Right):  Drive 10 ("rio"), Steer 11 ("rio"), CANcoder 12 ("rio")
   inline constexpr int kFLDriveId = 30, kFLSteerId = 31, kFLEncoderId = 32;
-  inline constexpr int kFRDriveId = 20, kFRSteerId = 21, kFREncoderId = 22;
+  inline constexpr int kFRDriveId = 21, kFRSteerId = 20, kFREncoderId = 22;
   inline constexpr int kBLDriveId = 40, kBLSteerId = 41, kBLEncoderId = 42;
   inline constexpr int kBRDriveId = 10, kBRSteerId = 11, kBREncoderId = 12;
   inline constexpr int kPigeonId = 2;

@@ -131,7 +131,7 @@ void Robot::RobotPeriodic() {
   frc::SmartDashboard::PutString("Diagnostics/Drive_Mode", "TankDrive Only");
   frc::SmartDashboard::PutBoolean("Drive/IsTankDrive", true);
   frc::SmartDashboard::PutBoolean("TopHalf/IsEnabled", m_topHalfEnabled);
-  frc::SmartDashboard::PutString("Diagnostics/Active_Modules", "FL (30), FR (20), BL (40), BR (10)");
+  frc::SmartDashboard::PutString("Diagnostics/Active_Modules", "FL (30/31), FR (21/20), BL (40/41), BR (10/11)");
   frc::SmartDashboard::PutString("Diagnostics/FL_Status", "Tank Drive Active");
 
   UpdateServoTelemetry();
@@ -631,7 +631,7 @@ void Robot::UpdateDiagnostics() {
   // Drive Mode & Modules Summary
   std::string currentDriveMode = m_isTankDrive ? "TankDrive" : (FieldCentric ? "FieldCentric" : "RobotCentric");
   frc::SmartDashboard::PutString("Diagnostics/Drive_Mode", currentDriveMode);
-  frc::SmartDashboard::PutString("Diagnostics/Active_Modules", "FL (30), FR (20), BL (40), BR (10)");
+  frc::SmartDashboard::PutString("Diagnostics/Active_Modules", "FL (30/31), FR (21/20), BL (40/41), BR (10/11)");
   frc::SmartDashboard::PutString("Diagnostics/FL_Status", "Active (Swerve 3 Connected)");
 }
 

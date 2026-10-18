@@ -25,9 +25,9 @@ TEST(ChimiSwerveConfigTest, CanIdsAndBusesMatchRobotTopology) {
   EXPECT_EQ(DC::kBRSteerId, 11);
   EXPECT_EQ(DC::kBREncoderId, 12);
 
-  // Swerve 2 (FR): 20, 21, 22
-  EXPECT_EQ(DC::kFRDriveId, 20);
-  EXPECT_EQ(DC::kFRSteerId, 21);
+  // Swerve 2 (FR): 21, 20, 22
+  EXPECT_EQ(DC::kFRDriveId, 21);
+  EXPECT_EQ(DC::kFRSteerId, 20);
   EXPECT_EQ(DC::kFREncoderId, 22);
 
   // Swerve 3 (FL): 30, 31, 32
