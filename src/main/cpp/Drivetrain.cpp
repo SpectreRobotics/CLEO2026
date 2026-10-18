@@ -22,37 +22,13 @@ using namespace ctre::phoenix6;
 using namespace units::literals;
 namespace DC = DrivetrainConstants;
 
-namespace {
-// Straight-ahead AbsolutePosition readings from Phoenix Tuner X screenshots:
-//   Swerve 1 (BR, CANcoder 12 on "rio"):       -0.297363 turns
-//   Swerve 2 (FR, CANcoder 22 on "rio"):       -0.173584 turns
-//   Swerve 3 (FL, CANcoder 32 on "intakebus"): -0.172119 turns
-//   Swerve 4 (BL, CANcoder 42 on "rio"):        0.158203 turns
-constexpr double kSwerve1BRZeroTurns = -0.297363;
-constexpr double kSwerve2FRZeroTurns = -0.173584;
-constexpr double kSwerve3FLZeroTurns = -0.172119;
-constexpr double kSwerve4BLZeroTurns =  0.158203;
-}  // namespace
-
+// CANcoders unwired and disabled
 double Drivetrain::GetCANcoderFLTurns() {
-  auto pos = CANcoderFL.GetAbsolutePosition();
-  if (pos.GetStatus().IsOK()) {
-    return pos.GetValueAsDouble();
-  }
-  static ctre::phoenix6::hardware::CANcoder CANcoderFL_rio{DC::kFLEncoderId, ctre::phoenix6::CANBus{DC::kCanBus}};
-  auto rioPos = CANcoderFL_rio.GetAbsolutePosition();
-  if (rioPos.GetStatus().IsOK()) {
-    return rioPos.GetValueAsDouble();
-  }
-  return pos.GetValueAsDouble();
+  return 0.0;
 }
 
 bool Drivetrain::IsCANcoderFLConnected() {
-  if (CANcoderFL.IsConnected()) {
-    return true;
-  }
-  static ctre::phoenix6::hardware::CANcoder CANcoderFL_rio{DC::kFLEncoderId, ctre::phoenix6::CANBus{DC::kCanBus}};
-  return CANcoderFL_rio.IsConnected();
+  return false;
 }
 
 Drivetrain::Drivetrain() {
@@ -198,15 +174,16 @@ void Drivetrain::DisabledPeriodic() {
 
   SyncSmartDashboardPID();
 
-  const double curFLTurns = std::remainder(GetCANcoderFLTurns() - kSwerve3FLZeroTurns, 1.0);
-  const double curFRTurns = std::remainder(CANcoderFR.GetAbsolutePosition().GetValueAsDouble() - kSwerve2FRZeroTurns, 1.0);
-  const double curBLTurns = std::remainder(CANcoderBL.GetAbsolutePosition().GetValueAsDouble() - kSwerve4BLZeroTurns, 1.0);
-  const double curBRTurns = std::remainder(CANcoderBR.GetAbsolutePosition().GetValueAsDouble() - kSwerve1BRZeroTurns, 1.0);
+  // CANcoders are unwired; modules are manually aligned straight and locked in Brake mode
+  const double curFLTurns = 0.0;
+  const double curFRTurns = 0.0;
+  const double curBLTurns = 0.0;
+  const double curBRTurns = 0.0;
 
-  const double curFLDeg = curFLTurns * 360.0;
-  const double curFRDeg = curFRTurns * 360.0;
-  const double curBLDeg = curBLTurns * 360.0;
-  const double curBRDeg = curBRTurns * 360.0;
+  const double curFLDeg = 0.0;
+  const double curFRDeg = 0.0;
+  const double curBLDeg = 0.0;
+  const double curBRDeg = 0.0;
 
   frc::SmartDashboard::PutNumber("Swerve/FL_Angle_Deg", curFLDeg);
   frc::SmartDashboard::PutNumber("Swerve/FR_Angle_Deg", curFRDeg);
@@ -218,11 +195,11 @@ void Drivetrain::DisabledPeriodic() {
   frc::SmartDashboard::PutNumber("Swerve/BL_ZeroedTurns", curBLTurns);
   frc::SmartDashboard::PutNumber("Swerve/BR_ZeroedTurns", curBRTurns);
 
-  // Raw CANcoder absolute readings
-  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FL_RawTurns", CANcoderFL.GetAbsolutePosition().GetValueAsDouble());
-  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FR_RawTurns", CANcoderFR.GetAbsolutePosition().GetValueAsDouble());
-  frc::SmartDashboard::PutNumber("Swerve/CANcoder_BL_RawTurns", CANcoderBL.GetAbsolutePosition().GetValueAsDouble());
-  frc::SmartDashboard::PutNumber("Swerve/CANcoder_BR_RawTurns", CANcoderBR.GetAbsolutePosition().GetValueAsDouble());
+  // Raw CANcoder absolute readings (unwired)
+  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FL_RawTurns", 0.0);
+  frc::SmartDashboard::PutNumber("Swerve/CANcoder_FR_RawTurns", 0.0);
+  frc::SmartDashboard::PutNumber("Swerve/CANcoder_BL_RawTurns", 0.0);
+  frc::SmartDashboard::PutNumber("Swerve/CANcoder_BR_RawTurns", 0.0);
 
   // Swerve 3 (CAN 31) hardware diagnostics
   frc::SmartDashboard::PutNumber("Diagnostics/FL_Steer_Temp_C", m_FL_Steer.GetDeviceTemp().GetValueAsDouble());
@@ -560,11 +537,6 @@ void Drivetrain::UpdateSim(units::time::second_t dt) {
   m_FR_Steer.GetSimState().SetRawRotorPosition(units::turn_t{tFR * DC::rotorToSensorRatio});
   m_BL_Steer.GetSimState().SetRawRotorPosition(units::turn_t{tBL * DC::rotorToSensorRatio});
   m_BR_Steer.GetSimState().SetRawRotorPosition(units::turn_t{tBR * DC::rotorToSensorRatio});
-
-  CANcoderFL.GetSimState().SetRawPosition(units::turn_t{tFL});
-  CANcoderFR.GetSimState().SetRawPosition(units::turn_t{tFR});
-  CANcoderBL.GetSimState().SetRawPosition(units::turn_t{tBL});
-  CANcoderBR.GetSimState().SetRawPosition(units::turn_t{tBR});
 }
 
 std::pair<double, double> Drivetrain::TankDriveKinematics(double throttle, double turn) {

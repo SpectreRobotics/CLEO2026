@@ -605,11 +605,12 @@ void Robot::UpdateDiagnostics() {
   frc::SmartDashboard::PutNumber("Diagnostics/Pigeon2_Pitch_deg", m_pigeon.GetPitch().GetValueAsDouble());
   frc::SmartDashboard::PutNumber("Diagnostics/Pigeon2_Roll_deg", m_pigeon.GetRoll().GetValueAsDouble());
 
-  // CANcoder Connection Statuses
-  frc::SmartDashboard::PutBoolean("Diagnostics/CANcoder_FL_OK", m_swerve.IsCANcoderFLConnected());
-  frc::SmartDashboard::PutBoolean("Diagnostics/CANcoder_FR_OK", m_swerve.CANcoderFR.IsConnected());
-  frc::SmartDashboard::PutBoolean("Diagnostics/CANcoder_BL_OK", m_swerve.CANcoderBL.IsConnected());
-  frc::SmartDashboard::PutBoolean("Diagnostics/CANcoder_BR_OK", m_swerve.CANcoderBR.IsConnected());
+  // CANcoder Status (Unwired / Disabled for Tank Drive)
+  frc::SmartDashboard::PutBoolean("Diagnostics/CANcoder_FL_OK", false);
+  frc::SmartDashboard::PutBoolean("Diagnostics/CANcoder_FR_OK", false);
+  frc::SmartDashboard::PutBoolean("Diagnostics/CANcoder_BL_OK", false);
+  frc::SmartDashboard::PutBoolean("Diagnostics/CANcoder_BR_OK", false);
+  frc::SmartDashboard::PutString("Diagnostics/CANcoder_Status", "Unwired / Disabled");
 
   // Top Half Mechanism Motors (CAN bus: "Tophalf")
   frc::SmartDashboard::PutNumber("Diagnostics/TopFeeder_Current_A", TopFeederMotor.GetStatorCurrent().GetValueAsDouble());

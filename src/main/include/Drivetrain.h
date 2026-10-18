@@ -9,7 +9,6 @@
 #include <vector>
 #include <algorithm>
 
-#include <ctre/phoenix6/CANcoder.hpp>
 #include <ctre/phoenix6/TalonFX.hpp>
 #include <ctre/phoenix6/controls/DutyCycleOut.hpp>
 #include <ctre/phoenix6/controls/NeutralOut.hpp>
@@ -106,12 +105,11 @@ class Drivetrain {
   ctre::phoenix6::hardware::TalonFX m_BL_Steer{41};
   ctre::phoenix6::hardware::TalonFX m_BR_Steer{11};
 
-  // CANcoders *2 (All 4 on "rio"; uncomment the "intakebus" line below if CANcoder 32 is moved back)
-  // ctre::phoenix6::hardware::CANcoder CANcoderFL{32, ctre::phoenix6::CANBus{"intakebus"}};
-  ctre::phoenix6::hardware::CANcoder CANcoderFL{32, ctre::phoenix6::CANBus{"rio"}};
-  ctre::phoenix6::hardware::CANcoder CANcoderFR{22, ctre::phoenix6::CANBus{"rio"}};
-  ctre::phoenix6::hardware::CANcoder CANcoderBL{42, ctre::phoenix6::CANBus{"rio"}};
-  ctre::phoenix6::hardware::CANcoder CANcoderBR{12, ctre::phoenix6::CANBus{"rio"}};
+  // CANcoders unwired and disabled (Tank Drive only on swerve wheels)
+  // ctre::phoenix6::hardware::CANcoder CANcoderFL{32, ctre::phoenix6::CANBus{"rio"}};
+  // ctre::phoenix6::hardware::CANcoder CANcoderFR{22, ctre::phoenix6::CANBus{"rio"}};
+  // ctre::phoenix6::hardware::CANcoder CANcoderBL{42, ctre::phoenix6::CANBus{"rio"}};
+  // ctre::phoenix6::hardware::CANcoder CANcoderBR{12, ctre::phoenix6::CANBus{"rio"}};
 
  private:
   void SyncSmartDashboardPID();
