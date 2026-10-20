@@ -7,6 +7,7 @@
 #include "ctre/phoenix6/HootAutoReplay.hpp"
 
 #include <frc/TimedRobot.h>
+#include <frc/Timer.h>
 #include <frc2/command/CommandPtr.h>
 #include <optional>
 
@@ -32,7 +33,10 @@ public:
 private:
     static constexpr bool kUseLimelight = false;
 
-    frc2::Command *m_autonomousCommand;
+    frc2::Command *m_autonomousCommand{nullptr};
+
+    /* Timer for time-based autonomous routines */
+    frc::Timer m_autoTimer;
 
     RobotContainer m_container;
 

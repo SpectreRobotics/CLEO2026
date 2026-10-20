@@ -7,6 +7,8 @@
 
 #include <frc2/command/CommandScheduler.h>
 
+using namespace units::literals;
+
 Robot::Robot() {}
 
 void Robot::RobotPeriodic() {
@@ -41,6 +43,7 @@ void Robot::DisabledPeriodic() {}
 void Robot::DisabledExit() {}
 
 void Robot::AutonomousInit() {
+    m_autoTimer.Restart();
     m_autonomousCommand = m_container.GetAutonomousCommand();
 
     if (m_autonomousCommand) {
@@ -48,7 +51,21 @@ void Robot::AutonomousInit() {
     }
 }
 
-void Robot::AutonomousPeriodic() {}
+void Robot::AutonomousPeriodic() {
+    // If no PathPlanner auto command is scheduled, you can run time-based autonomous logic here:
+    if (!m_autonomousCommand) {
+        // Example time-based autonomous:
+        // if (m_autoTimer.Get() < 2_s) {
+        //     // Drive forward at 1.0 m/s for 2 seconds
+        //     m_container.drivetrain.SetControl(
+        //         swerve::requests::RobotCentric{}.WithVelocityX(1.0_mps)
+        //     );
+        // } else {
+        //     // Brake when time is up
+        //     m_container.drivetrain.SetControl(swerve::requests::SwerveDriveBrake{});
+        // }
+    }
+}
 
 void Robot::AutonomousExit() {}
 
@@ -58,7 +75,9 @@ void Robot::TeleopInit() {
     }
 }
 
-void Robot::TeleopPeriodic() {}
+void Robot::TeleopPeriodic() {
+    // Time-based teleop routines or custom periodic mechanism logic can be placed here.
+}
 
 void Robot::TeleopExit() {}
 

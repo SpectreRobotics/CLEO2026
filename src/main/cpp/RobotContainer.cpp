@@ -21,8 +21,8 @@ void RobotContainer::ConfigureBindings()
 {
     // Note that X is defined as forward according to WPILib convention,
     // and Y is defined as to the left according to WPILib convention.
-    drivetrain.SetDefaultCommand(
-        // Drivetrain will execute this command periodically
+    // Drive with joystick during teleop mode (allows time-based autonomous to run without command interference)
+    frc2::RobotModeTriggers::Teleop().WhileTrue(
         drivetrain.ApplyRequest([this]() -> auto&& {
             return drive.WithVelocityX(-joystick.GetLeftY() * MaxSpeed) // Drive forward with negative Y (forward)
                 .WithVelocityY(-joystick.GetLeftX() * MaxSpeed) // Drive left with negative X (left)
